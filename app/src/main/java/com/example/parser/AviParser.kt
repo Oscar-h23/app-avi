@@ -161,7 +161,7 @@ object AviParser {
         var placaWords = ""
 
         val viaKeywords = listOf("via ", "carril ", "pista ", "numero ")
-        val placaKeywords = listOf("placa ", "vehiculo ", "auto ", "movil ", "unidad ")
+        // La placa solo se interpreta cuando el usuario dice explícitamente "placa".\n        val placaKeywords = listOf("placa ")
 
         var viaStart = -1
         var viaKeyLen = 0
@@ -197,11 +197,11 @@ object AviParser {
             placaWords = clean.substring(placaStart + placaKeyLen).trim()
         } else if (viaStart != -1) {
             viaWords = clean.substring(viaStart + viaKeyLen).trim()
-            // Intentar buscar placa en el resto del texto
-            placaWords = clean.substring(0, viaStart).trim()
+            // No intentar inferir una placa si no se dijo explícitamente "placa".
+            placaWords = ""
         } else {
-            // Sin palabras clave explícitas: analizar todo el texto
-            placaWords = clean
+            // Sin la palabra "placa", no se interpreta ninguna matrícula.
+            placaWords = ""
             viaWords = clean
         }
 
@@ -212,7 +212,7 @@ object AviParser {
         }
 
         // 3. Parser de Placa
-        val placaParsed = parsePlaca(placaWords, clean)
+        val placaParsed = parsePlaca(placaWords)
         if (placaParsed.isBlank()) {
             errores.add("No se detectó la placa del vehículo. Por favor dictar o ingresar la placa.")
         } else if (placaParsed.length < 6) {
@@ -293,16 +293,17 @@ object AviParser {
         return total
     }
 
-    private fun parsePlaca(placaSnippet: String, fullCleanText: String): String {
-        // Caso 1: Placa ya en formato alfanumérico compacto (ej. "ABC123", "ABC-123", "BTL245")
-        val directAlphanumeric = Regex("\\b([a-z]{3})[- ]?(\\d{3})\\b", RegexOption.IGNORE_CASE).find(fullCleanText)
+    private fun parsePlaca(placaSnippet: String): String {
+        val target = if (placaSnippet.isNotBlank()) placaSnippet else return ""
+
+        // Caso 1: Placa ya en formato alfanumérico compacto (ej. "ABC123", "ABC-123", "BTL245").
+        // Se busca únicamente dentro del fragmento posterior a la palabra "placa".
+        val directAlphanumeric = Regex("\\b([a-z]{3})[- ]?(\\d{3})\\b", RegexOption.IGNORE_CASE).find(target)
         if (directAlphanumeric != null) {
             val letters = directAlphanumeric.groupValues[1].uppercase(Locale.ROOT)
             val digits = directAlphanumeric.groupValues[2]
             return "$letters$digits"
         }
-
-        val target = if (placaSnippet.isNotBlank()) placaSnippet else return ""
 
         // Caso 2: Deletreo fonético ("alfa bravo charlie uno dos tres" -> "ABC123")
         val tokens = target.split(" ").filter { it.isNotBlank() && it != "y" && it != "guion" && it != "menos" }
