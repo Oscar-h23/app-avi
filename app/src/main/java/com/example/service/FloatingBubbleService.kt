@@ -17,7 +17,6 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,8 +24,6 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -53,11 +50,9 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
@@ -92,7 +87,6 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.MainActivity
 import com.example.data.IncidentRepository
-import com.example.model.DiagnosticStage
 import com.example.parser.AviParser
 import com.example.util.AviDateUtils
 import com.example.voice.AviSpeechManager
@@ -301,7 +295,6 @@ class FloatingBubbleService : Service() {
 /**
  * Contenido Compose renderizado dentro de la ventana de WindowManager
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FloatingOverlayContent(
     isExpandedFlow: MutableStateFlow<Boolean>,
@@ -315,9 +308,9 @@ fun FloatingOverlayContent(
     val voiceState by speechManager.voiceState.collectAsState()
     val scope = rememberCoroutineScope()
 
-    var accionInput by remember { mutableStateOf("FUGA") }
-    var viaInput by remember { mutableStateOf("151") }
-    var placaInput by remember { mutableStateOf("BTL245") }
+    var accionInput by remember { mutableStateOf("") }
+    var viaInput by remember { mutableStateOf("") }
+    var placaInput by remember { mutableStateOf("") }
     var textoOriginalInput by remember { mutableStateOf("") }
     var fechaHoraEventoCapturada by remember { mutableStateOf(AviDateUtils.nowLimaIso()) }
     var mensajeRegistro by remember { mutableStateOf<String?>(null) }
@@ -453,105 +446,7 @@ fun FloatingOverlayContent(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Barra de Diagnóstico de 4 Etapas
-                Surface(
-                    color = Color(0xFF1E293B),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = voiceState.stage.label,
-                                color = when (voiceState.stage) {
-                                    DiagnosticStage.STAGE_4 -> Color(0xFF10B981)
-                                    DiagnosticStage.STAGE_3, DiagnosticStage.STAGE_2 -> Color(0xFFF59E0B)
-                                    DiagnosticStage.STAGE_1 -> Color(0xFF38BDF8)
-                                    DiagnosticStage.IDLE -> Color.LightGray
-                                },
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            if (voiceState.isListening) {
-                                Text(
-                                    text = "ESCUTANDO...",
-                                    color = Color(0xFFEF4444),
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Black
-                                )
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        LinearProgressIndicator(
-                            progress = {
-                                when (voiceState.stage) {
-                                    DiagnosticStage.STAGE_1 -> 0.25f
-                                    DiagnosticStage.STAGE_2 -> 0.50f
-                                    DiagnosticStage.STAGE_3 -> 0.75f
-                                    DiagnosticStage.STAGE_4 -> 1.0f
-                                    DiagnosticStage.IDLE -> 0.05f
-                                }
-                            },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(6.dp)
-                                .clip(RoundedCornerShape(3.dp)),
-                            color = Color(0xFF38BDF8),
-                            trackColor = Color(0xFF334155)
-                        )
-
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = voiceState.stageDescription,
-                            color = Color.LightGray,
-                            fontSize = 11.sp,
-                            lineHeight = 14.sp
-                        )
-
-                        if (voiceState.errorMessage != null) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "⚠ ${voiceState.errorMessage}",
-                                color = Color(0xFFF87171),
-                                fontSize = 11.sp
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Guía rápida del orden de dictado en el panel flotante
-                Surface(
-                    color = Color(0xFF1E293B),
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(modifier = Modifier.padding(8.dp)) {
-                        Text(
-                            text = "ORDEN: [ACCIÓN] + [VÍA] + [PLACA]",
-                            color = Color(0xFF38BDF8),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "🗣 \"Fuga vía ciento uno placa Bravo Tango Lima dos cuatro cinco\"",
-                            color = Color.LightGray,
-                            fontSize = 10.sp
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Botón Principal HABLAR
+                // Captura principal por voz
                 Button(
                     onClick = {
                         if (voiceState.isListening) {
@@ -581,97 +476,23 @@ fun FloatingOverlayContent(
                     )
                 }
 
-                if (!speechManager.isRecognizerAvailable) {
+                if (voiceState.isListening) {
                     Spacer(modifier = Modifier.height(6.dp))
-                    Surface(
-                        color = Color(0xFFF59E0B).copy(alpha = 0.15f),
-                        shape = RoundedCornerShape(8.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            text = "ℹ Servicio de voz de Google no integrado en este dispositivo. Usa las frases rápidas de abajo o escribe lo que dijiste.",
-                            color = Color(0xFFFCD34D),
-                            fontSize = 10.sp,
-                            lineHeight = 13.sp,
-                            modifier = Modifier.padding(8.dp)
-                        )
-                    }
+                    Text(
+                        text = "Escuchando...",
+                        color = Color(0xFF38BDF8),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Campo para probar directamente cualquier frase dicha
-                var customPhraseInput by remember { mutableStateOf("") }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = customPhraseInput,
-                        onValueChange = { customPhraseInput = it },
-                        placeholder = { Text("O escribe/pega lo dicho...", fontSize = 11.sp, color = Color.Gray) },
-                        modifier = Modifier.weight(1f),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF38BDF8),
-                            unfocusedBorderColor = Color(0xFF475569),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        )
+                if (voiceState.errorMessage != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "⚠ ${voiceState.errorMessage}",
+                        color = Color(0xFFF87171),
+                        fontSize = 11.sp
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Button(
-                        onClick = {
-                            if (customPhraseInput.isNotBlank()) {
-                                speechManager.simulateVoiceInput(customPhraseInput)
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                        shape = RoundedCornerShape(8.dp),
-                        enabled = customPhraseInput.isNotBlank()
-                    ) {
-                        Text("Probar", fontSize = 11.sp)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // Frases rápidas de prueba
-                Text(
-                    text = "Frases operativas con 1 toque:",
-                    color = Color.Gray,
-                    fontSize = 11.sp
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    val presets = listOf(
-                        "Placa alfa bravo charlie uno dos tres, vía uno cinco uno, fuga",
-                        "Placa bravo tango lima dos cuatro cinco, vía ochenta y ocho, derivado",
-                        "Placa btl dos cuatro cinco, vía ciento cincuenta y uno, fuga"
-                    )
-
-                    presets.forEach { preset ->
-                        FilterChip(
-                            selected = false,
-                            onClick = {
-                                speechManager.simulateVoiceInput(preset)
-                            },
-                            label = {
-                                Text(
-                                    text = preset.take(28) + "...",
-                                    fontSize = 10.sp,
-                                    color = Color(0xFF93C5FD)
-                                )
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                containerColor = Color(0xFF1E293B)
-                            )
-                        )
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
@@ -710,7 +531,7 @@ fun FloatingOverlayContent(
                     OutlinedTextField(
                         value = placaInput,
                         onValueChange = { placaInput = it },
-                        label = { Text("Placa (ej. ABC123)", fontSize = 11.sp) },
+                        label = { Text("Placa", fontSize = 11.sp) },
                         modifier = Modifier.weight(1.2f),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -724,7 +545,7 @@ fun FloatingOverlayContent(
                     OutlinedTextField(
                         value = viaInput,
                         onValueChange = { viaInput = it },
-                        label = { Text("Vía (ej. 151)", fontSize = 11.sp) },
+                        label = { Text("Vía", fontSize = 11.sp) },
                         modifier = Modifier.weight(0.8f),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -775,7 +596,7 @@ fun FloatingOverlayContent(
                                 via = viaNum,
                                 accion = accionInput,
                                 fechaHoraEvento = fechaHoraEventoCapturada,
-                                textoReconocido = textoOriginalInput.ifBlank { "Registro desde panel flotante" }
+                                textoReconocido = textoOriginalInput.ifBlank { null }
                             )
                             mensajeRegistro = "✓ Registrado y enviado a SIGO"
                             kotlinx.coroutines.delay(1200)
@@ -783,6 +604,9 @@ fun FloatingOverlayContent(
                             onExpandToggle() // Minimiza la burbuja automáticamente
                         }
                     },
+                    enabled = placaInput.isNotBlank() &&
+                            viaInput.toIntOrNull() != null &&
+                            accionInput in listOf("FUGA", "DERIVADO"),
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF059669)
