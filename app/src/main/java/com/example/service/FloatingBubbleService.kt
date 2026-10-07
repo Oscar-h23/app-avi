@@ -321,8 +321,10 @@ fun FloatingOverlayContent(
             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
             val parsed = AviParser.parse(textoReconocido)
             accionInput = parsed.accion
-            viaInput = if (parsed.via != null) parsed.via.toString() else viaInput
-            placaInput = if (parsed.placa.isNotBlank()) parsed.placa else placaInput
+            viaInput = parsed.via?.toString() ?: ""
+            // No conservar una placa anterior: solo mostrar la placa detectada
+            // después de que el dictado contenga explícitamente la palabra "placa".
+            placaInput = parsed.placa
             textoOriginalInput = textoReconocido
         }
         speechManager.addResultListener(listener)
