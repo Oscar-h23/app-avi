@@ -252,18 +252,39 @@ object AviParser {
             return directDigits.value.toIntOrNull()
         }
 
-        val tokens = target.split(" ").filter { it.isNotBlank() && it != "y" && it != "numero" && it != "de" }
+        // Tomar solo el bloque numérico inicial de la vía. Al encontrar una palabra
+        // que ya no forma parte del número (por ejemplo, el comienzo de una placa),
+        // se detiene la lectura para no mezclar sus dígitos con la vía.
+        val numberTokens = mutableListOf<String>()
+        var numberStarted = false
+        for (token in target.split(" ").filter { it.isNotBlank() }) {
+            val isJoiner = token == "y" || token == "numero" || token == "de"
+            val isNumberWord = singleDigits.containsKey(token) || spanishNumbers.containsKey(token)
+
+            when {
+                isNumberWord -> {
+                    numberStarted = true
+                    numberTokens.add(token)
+                }
+                isJoiner && numberStarted -> numberTokens.add(token)
+                isJoiner && !numberStarted -> continue
+                numberStarted -> break
+                else -> continue
+            }
+        }
+
+        val tokens = numberTokens.filter { it != "y" && it != "numero" && it != "de" }
         if (tokens.isEmpty()) return null
 
         // Caso A: Dígito individual a dígito ("uno cinco uno" -> 151)
         val areAllSingleDigits = tokens.all { singleDigits.containsKey(it) }
-        if (areAllSingleDigits && tokens.isNotEmpty()) {
+        if (areAllSingleDigits) {
             val digitString = tokens.map { singleDigits[it] }.joinToString("")
             return digitString.toIntOrNull()
         }
 
         // Caso B: Número compuesto en palabras ("ciento cincuenta y uno" -> 151)
-        val compuesto = convertWordsToNumber(target)
+        val compuesto = convertWordsToNumber(numberTokens.joinToString(" "))
         return if (compuesto > 0) compuesto else null
     }
 
