@@ -161,7 +161,8 @@ object AviParser {
         var placaWords = ""
 
         val viaKeywords = listOf("via ", "carril ", "pista ", "numero ")
-        // La placa solo se interpreta cuando el usuario dice explícitamente "placa".\n        val placaKeywords = listOf("placa ")
+        // La placa solo se interpreta cuando el usuario dice explícitamente "placa".
+        val placaKeywords = listOf("placa ")
 
         var viaStart = -1
         var viaKeyLen = 0
