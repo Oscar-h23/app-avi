@@ -446,6 +446,16 @@ fun FloatingOverlayContent(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
+                // Guía breve del orden de dictado
+                Text(
+                    text = "ORDEN: [ACCIÓN] + [VÍA] + [PLACA]",
+                    color = Color(0xFF38BDF8),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                 // Captura principal por voz
                 Button(
                     onClick = {
