@@ -154,12 +154,24 @@ class ExampleUnitTest {
 
     @Test
     fun testOrdenInvertidoPlacaFugaVia() {
-        // "Bravo Tango Lima dos cuatro cinco fuga vía ciento uno"
-        val result = AviParser.parse("Bravo Tango Lima dos cuatro cinco fuga vía ciento uno")
+        // "Placa Bravo Tango Lima dos cuatro cinco fuga vía ciento uno"
+        val result = AviParser.parse("Placa Bravo Tango Lima dos cuatro cinco fuga vía ciento uno")
         assertEquals("BTL245", result.placa)
         assertEquals(101, result.via)
         assertEquals("FUGA", result.accion)
         assertTrue(result.valido)
+    }
+
+    @Test
+    fun testNoInterpretaPlacaSinPalabraPlaca() {
+        // Aunque haya letras y números después de la vía, no deben convertirse en placa
+        // si el usuario todavía no dijo explícitamente "placa".
+        val result = AviParser.parse("Fuga vía ciento uno Bravo Tango Lima dos cuatro cinco")
+        assertEquals("", result.placa)
+        assertEquals(101, result.via)
+        assertEquals("FUGA", result.accion)
+        assertFalse(result.valido)
+        assertTrue(result.errores.any { it.contains("placa", ignoreCase = true) })
     }
 
     @Test
