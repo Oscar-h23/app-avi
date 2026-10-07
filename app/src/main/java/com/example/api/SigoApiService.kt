@@ -63,7 +63,7 @@ interface SigoApiService {
     ): Response<List<RegistroSigoResponse>>
 
     companion object {
-        const val DEFAULT_BASE_URL = "http://192.168.1.53:8080/"
+        const val DEFAULT_BASE_URL = "http://172.20.10.8:8080/"
         const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
 
         val defaultMoshi: Moshi = Moshi.Builder()
