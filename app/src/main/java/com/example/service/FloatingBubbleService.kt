@@ -596,7 +596,7 @@ fun FloatingOverlayContent(
                                 via = viaNum,
                                 accion = accionInput,
                                 fechaHoraEvento = fechaHoraEventoCapturada,
-                                textoReconocido = textoOriginalInput.ifBlank { null }
+                                textoReconocido = textoOriginalInput
                             )
                             mensajeRegistro = "✓ Registrado y enviado a SIGO"
                             kotlinx.coroutines.delay(1200)
