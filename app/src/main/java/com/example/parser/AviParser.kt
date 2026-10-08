@@ -127,6 +127,20 @@ object AviParser {
 
     private val viaKeywords = listOf("via ", "carril ", "pista ", "numero ")
 
+    // Confusiones observables del ASR. No se reemplazan globalmente:
+    // solo cuando la estructura del comando indica que AVIX está esperando ese marcador.
+    private val viaContextAliases = setOf(
+        "via", "habia", "avia", "bia", "dia", "guia"
+    )
+
+    private val placaContextAliases = setOf(
+        "placa", "placas", "plata", "plaga", "flaca"
+    )
+
+    private val fugaContextAliases = setOf(
+        "fuga", "juga"
+    )
+
     private val canonicalPhoneticWords = listOf(
         "alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
         "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
@@ -164,7 +178,14 @@ object AviParser {
             "vía",
             "placa",
             "vía placa",
-            "acción vía placa"
+            "acción vía placa",
+            // Variantes que el ASR suele producir. Se incluyen como contexto,
+            // pero el parser solo las corrige si la gramática operativa coincide.
+            "fuga habia",
+            "fuga avia",
+            "fuga dia",
+            "via placa",
+            "via plata"
         )
 
         // Priorizar frases completas de vía para que el reconocedor use
@@ -189,7 +210,7 @@ object AviParser {
         return phrases.distinct().take(100)
     }
 
-    fun normalize(text: String): String {
+    private fun basicNormalize(text: String): String {
         val withoutAccents = Normalizer.normalize(text, Normalizer.Form.NFD)
             .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
 
@@ -200,11 +221,162 @@ object AviParser {
             .replace(";", " ")
             .replace(":", " ")
             .replace("-", " ")
-            .replace(Regex("\\bplacas\\b"), "placa")
-            // Confusión frecuente del reconocedor dentro de este dominio.
-            .replace(Regex("\\bdia(?=\\s+(?:\\d|primero|primer|primera|segundo|segunda|tercero|tercera|cuarto|quinta|quinto|negativo))"), "via")
             .replace(Regex("\\s+"), " ")
             .trim()
+    }
+
+    private fun isNumberContextToken(token: String): Boolean {
+        return token.all { it.isDigit() } ||
+            singleDigits.containsKey(token) ||
+            spanishNumbers.containsKey(token)
+    }
+
+    private fun isPlateContextToken(
+        tokens: List<String>,
+        index: Int
+    ): Boolean {
+        val token = tokens.getOrNull(index) ?: return false
+
+        if (singleDigits.containsKey(token)) return true
+        if (phoneticAlphabet.containsKey(token)) return true
+        if (token.length == 1 && token[0].isLetterOrDigit()) return true
+        if (token.any { it.isDigit() } && token.all { it.isLetterOrDigit() }) return true
+
+        if (index + 1 < tokens.size) {
+            val pair = "$token ${tokens[index + 1]}"
+            if (phoneticAlphabet.containsKey(pair)) return true
+        }
+
+        return false
+    }
+
+    private fun editDistance(
+        a: String,
+        b: String
+    ): Int {
+        if (a == b) return 0
+        if (a.isEmpty()) return b.length
+        if (b.isEmpty()) return a.length
+
+        val previous = IntArray(b.length + 1) { it }
+        val current = IntArray(b.length + 1)
+
+        for (i in 1..a.length) {
+            current[0] = i
+            for (j in 1..b.length) {
+                val cost = if (a[i - 1] == b[j - 1]) 0 else 1
+                current[j] = minOf(
+                    current[j - 1] + 1,
+                    previous[j] + 1,
+                    previous[j - 1] + cost
+                )
+            }
+            for (j in previous.indices) {
+                previous[j] = current[j]
+            }
+        }
+
+        return previous[b.length]
+    }
+
+    private fun resemblesVia(token: String): Boolean {
+        if (token in viaContextAliases) return true
+
+        // Fuzzy solo para palabras cortas y cuando la estructura externa ya
+        // confirmó que lo siguiente parece una vía. Evita correcciones globales.
+        return token.length in 2..5 &&
+            editDistance(token, "via") <= 2
+    }
+
+    private fun resemblesPlaca(token: String): Boolean {
+        if (token in placaContextAliases) return true
+        return token.length in 4..7 &&
+            editDistance(token, "placa") <= 1
+    }
+
+    /**
+     * Repara errores del SpeechRecognizer usando la gramática de AVIX:
+     * ACCIÓN -> VÍA -> PLACA.
+     *
+     * Ejemplo:
+     * "fuga habia 101 plata alfa bravo..." ->
+     * "fuga via 101 placa alfa bravo..."
+     */
+    fun normalizeOperationalContext(text: String): String {
+        val basic = basicNormalize(text)
+        if (basic.isBlank()) return basic
+
+        val tokens = basic.split(" ").toMutableList()
+
+        // 1) Acción: corrección muy restringida. "juga" solo se interpreta como
+        // FUGA si inmediatamente después aparece un candidato a VÍA seguido de número.
+        if (tokens.isNotEmpty() && tokens[0] in fugaContextAliases) {
+            val possibleViaIndex = 1
+            val possibleNumberIndex = 2
+            if (
+                tokens[0] != "fuga" &&
+                tokens.getOrNull(possibleViaIndex)?.let { resemblesVia(it) } == true &&
+                tokens.getOrNull(possibleNumberIndex)?.let { isNumberContextToken(it) } == true
+            ) {
+                tokens[0] = "fuga"
+            }
+        }
+
+        // Ubicar una acción ya reconocida. Solo después de ella buscamos VÍA.
+        val joinedBeforeVia = tokens.joinToString(" ")
+        val actionIndex = when {
+            aliasFuga.any { joinedBeforeVia.contains(it) } ||
+                aliasDerivado.any { joinedBeforeVia.contains(it) } -> {
+                tokens.indexOfFirst { token ->
+                    token in aliasFuga || token in aliasDerivado || token == "fuga"
+                }.coerceAtLeast(0)
+            }
+            else -> -1
+        }
+
+        if (actionIndex >= 0) {
+            // 2) VÍA: candidato fonéticamente parecido + número inmediatamente después.
+            val plateBoundary = tokens.indexOfFirst { it in placaContextAliases }
+                .let { if (it >= 0) it else tokens.size }
+
+            for (i in (actionIndex + 1) until plateBoundary) {
+                val token = tokens[i]
+                val next = tokens.getOrNull(i + 1)
+
+                if (
+                    resemblesVia(token) &&
+                    next != null &&
+                    isNumberContextToken(next)
+                ) {
+                    tokens[i] = "via"
+                    break
+                }
+            }
+        }
+
+        // 3) PLACA: solo después de haber encontrado VÍA y su bloque numérico.
+        val viaIndex = tokens.indexOfFirst { it == "via" || it == "carril" || it == "pista" }
+        if (viaIndex >= 0) {
+            for (i in (viaIndex + 1) until tokens.size) {
+                val token = tokens[i]
+
+                if (
+                    resemblesPlaca(token) &&
+                    isPlateContextToken(tokens, i + 1)
+                ) {
+                    tokens[i] = "placa"
+                    break
+                }
+            }
+        }
+
+        return tokens.joinToString(" ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+    }
+
+    fun normalize(text: String): String {
+        return normalizeOperationalContext(text)
     }
 
     private fun actionDetected(clean: String): Boolean {
