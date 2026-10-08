@@ -167,19 +167,24 @@ object AviParser {
             "acción vía placa"
         )
 
-        phrases += canonicalPhoneticWords
-        phrases += canonicalQDigits
-
+        // Priorizar frases completas de vía para que el reconocedor use
+        // el catálogo de la plaza como contexto, no solo como validación posterior.
         for (via in allowedVias.filter { it > 0 }.sorted()) {
-            phrases += via.toString()
             phrases += "vía $via"
 
             val qPhrase = numberToQPhrase(via)
             if (qPhrase.isNotBlank()) {
-                phrases += qPhrase
                 phrases += "vía $qPhrase"
             }
         }
+
+        // Contexto de placa: palabra clave + fonética esperada.
+        phrases += canonicalPhoneticWords
+        phrases += canonicalPhoneticWords.map { "placa $it" }
+
+        // Los ordinales también aparecen dentro de vía y placa.
+        phrases += canonicalQDigits
+        phrases += canonicalQDigits.map { "placa $it" }
 
         return phrases.distinct().take(100)
     }
