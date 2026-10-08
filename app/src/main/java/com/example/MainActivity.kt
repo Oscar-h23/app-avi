@@ -1791,6 +1791,15 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
     val context = LocalContext.current
     val usuario = repository.getUsuarioActual()
     val connectionState by repository.connectionState.collectAsState()
+    val allowedVias by repository.allowedVias.collectAsState()
+    val voiceMetrics = remember {
+        AviSpeechManager.getInstance(context).getVoiceMetrics()
+    }
+    val voiceSuccessRate = if (voiceMetrics.attempts > 0) {
+        ((voiceMetrics.validFirstPass * 100f) / voiceMetrics.attempts).toInt()
+    } else {
+        0
+    }
 
     var urlInput by remember { mutableStateOf(repository.getBaseUrl()) }
     var isChecking by remember { mutableStateOf(false) }
@@ -1829,6 +1838,65 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
                 Text(text = "Código de Operador: #${usuario?.codigo ?: "---"}", fontSize = 13.sp)
                 Text(text = "Plaza Asignada: ${usuario?.plaza ?: "P4"}", fontSize = 13.sp)
                 Text(text = "Rol: ${usuario?.rol ?: "OPERADOR"}", fontSize = 13.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Métricas locales del motor de voz
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline
+            ),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+        ) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Motor de voz AVIX",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = "Métricas guardadas solo en este dispositivo",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "Acierto en primer intento: $voiceSuccessRate%",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = "Intentos: ${voiceMetrics.attempts} • Alternativa elegida: ${voiceMetrics.alternativeSelected}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Correcciones manuales: ${voiceMetrics.manualCorrections} • Placa: ${voiceMetrics.plateCorrections} • Vía: ${voiceMetrics.viaCorrections}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = "Fallos detectados — acción: ${voiceMetrics.missingAction}, vía: ${voiceMetrics.missingVia}, placa: ${voiceMetrics.missingPlate}",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                if (allowedVias.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Vías SIGO cargadas: ${allowedVias.sorted().joinToString(", ")}",
+                        fontSize = 11.sp,
+                        color = AviStatusOnline
+                    )
+                }
             }
         }
 
