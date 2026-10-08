@@ -39,7 +39,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material3.Button
@@ -104,6 +103,9 @@ class FloatingBubbleService : Service() {
 
     // Estado para controlar si está en modo burbuja pequeña o panel flotante expandido
     private val isExpanded = MutableStateFlow(false)
+
+    // Zona de cierre estilo Messenger: al arrastrar AVIX hacia abajo y soltar, se cierra.
+    private val isInDismissZone = MutableStateFlow(false)
 
     // Coordenadas flotantes
     private var initialX = 0
@@ -213,6 +215,7 @@ class FloatingBubbleService : Service() {
                 ) {
                     FloatingOverlayContent(
                         isExpandedFlow = isExpanded,
+                        isInDismissZoneFlow = isInDismissZone,
                         speechManager = speechManager,
                         repository = repository,
                         onExpandToggle = {
@@ -220,15 +223,29 @@ class FloatingBubbleService : Service() {
                             isExpanded.value = newExpanded
                             updateLayoutParamsForExpansion(newExpanded)
                         },
-                        onClose = {
-                            stopSelf()
-                        },
                         onDrag = { dx, dy ->
                             windowLayoutParams?.let { params ->
                                 params.x += dx.toInt()
                                 params.y += dy.toInt()
+
+                                val screenHeight = resources.displayMetrics.heightPixels
+                                val overlayHeight = overlayView?.height ?: 0
+                                val overlayCenterY = params.y + (overlayHeight / 2)
+                                val dismissThreshold = (screenHeight * 0.78f).toInt()
+
+                                isInDismissZone.value = overlayCenterY >= dismissThreshold
                                 windowManager?.updateViewLayout(overlayView, params)
                             }
+                        },
+                        onDragEnd = {
+                            if (isInDismissZone.value) {
+                                stopSelf()
+                            } else {
+                                isInDismissZone.value = false
+                            }
+                        },
+                        onDragCancel = {
+                            isInDismissZone.value = false
                         }
                     )
                 }
@@ -302,13 +319,16 @@ class FloatingBubbleService : Service() {
 @Composable
 fun FloatingOverlayContent(
     isExpandedFlow: MutableStateFlow<Boolean>,
+    isInDismissZoneFlow: MutableStateFlow<Boolean>,
     speechManager: AviSpeechManager,
     repository: IncidentRepository,
     onExpandToggle: () -> Unit,
-    onClose: () -> Unit,
-    onDrag: (dx: Float, dy: Float) -> Unit
+    onDrag: (dx: Float, dy: Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onDragCancel: () -> Unit
 ) {
     val expanded by isExpandedFlow.collectAsState()
+    val isInDismissZone by isInDismissZoneFlow.collectAsState()
     val voiceState by speechManager.voiceState.collectAsState()
     val scope = rememberCoroutineScope()
 
@@ -343,7 +363,10 @@ fun FloatingOverlayContent(
             modifier = Modifier
                 .wrapContentSize()
                 .pointerInput(Unit) {
-                    detectDragGestures { change, dragAmount ->
+                    detectDragGestures(
+                        onDragEnd = onDragEnd,
+                        onDragCancel = onDragCancel
+                    ) { change, dragAmount ->
                         change.consume()
                         onDrag(dragAmount.x, dragAmount.y)
                     }
@@ -356,8 +379,12 @@ fun FloatingOverlayContent(
                     .size(62.dp)
                     .shadow(12.dp, CircleShape)
                     .clip(CircleShape)
-                    .background(Color(0xFF0F172A))
-                    .border(2.5.dp, Color(0xFF38BDF8), CircleShape)
+                    .background(if (isInDismissZone) Color(0xFFD64545) else Color(0xFF0B2342))
+                    .border(
+                        2.5.dp,
+                        if (isInDismissZone) Color(0xFFFCA5A5) else Color(0xFF1688E8),
+                        CircleShape
+                    )
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -366,11 +393,17 @@ fun FloatingOverlayContent(
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = "Abrir AVIX",
-                        tint = if (voiceState.isListening) Color(0xFFEF4444) else Color(0xFF38BDF8),
+                        tint = if (isInDismissZone) {
+                            Color.White
+                        } else if (voiceState.isListening) {
+                            Color(0xFFEF4444)
+                        } else {
+                            Color(0xFF60A5FA)
+                        },
                         modifier = Modifier.size(28.dp)
                     )
                     Text(
-                        text = "AVIX",
+                        text = if (isInDismissZone) "SOLTAR" else "AVIX",
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -389,7 +422,10 @@ fun FloatingOverlayContent(
             colors = CardDefaults.cardColors(
                 containerColor = Color.White
             ),
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFDFE5EE))
+            border = androidx.compose.foundation.BorderStroke(
+                1.5.dp,
+                if (isInDismissZone) Color(0xFFD64545) else Color(0xFFDFE5EE)
+            )
         ) {
             Column(
                 modifier = Modifier
@@ -402,7 +438,10 @@ fun FloatingOverlayContent(
                     modifier = Modifier
                         .fillMaxWidth()
                         .pointerInput(Unit) {
-                            detectDragGestures { change, dragAmount ->
+                            detectDragGestures(
+                                onDragEnd = onDragEnd,
+                                onDragCancel = onDragCancel
+                            ) { change, dragAmount ->
                                 change.consume()
                                 onDrag(dragAmount.x, dragAmount.y)
                             }
@@ -419,38 +458,35 @@ fun FloatingOverlayContent(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "AVIX",
-                            color = Color(0xFF132033),
+                            text = if (isInDismissZone) "Suelta para cerrar AVIX" else "AVIX",
+                            color = if (isInDismissZone) Color(0xFFD64545) else Color(0xFF132033),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
                     }
 
-                    Row {
-                        IconButton(
-                            onClick = onExpandToggle,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Minimizar",
-                                tint = Color(0xFF64748B)
-                            )
-                        }
-                        IconButton(
-                            onClick = onClose,
-                            modifier = Modifier.size(28.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Cerrar",
-                                tint = Color.LightGray
-                            )
-                        }
+                    IconButton(
+                        onClick = onExpandToggle,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Minimizar",
+                            tint = Color(0xFF64748B)
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = if (isInDismissZone)
+                        "Suelta aquí para cerrar la burbuja"
+                    else
+                        "Arrastra hacia abajo para cerrar",
+                    color = if (isInDismissZone) Color(0xFFD64545) else Color(0xFF94A3B8),
+                    fontSize = 9.sp
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Guía breve del orden de dictado
                 Text(
