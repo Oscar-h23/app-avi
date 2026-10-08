@@ -1327,13 +1327,13 @@ fun PantallaConfirmacion(
                     value = placaInput,
                     onValueChange = { placaInput = it.uppercase().replace(" ", "").replace("-", "") },
                     label = { Text("Placa del Vehículo") },
-                    placeholder = { Text("Ej: BTL245") },
+                    placeholder = { Text("Ej: BTL245 o A1B234") },
                     singleLine = true,
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("plate_input_field"),
                     trailingIcon = {
-                        if (placaInput.length >= 6) {
+                        if (AviParser.isValidPeruPlate(placaInput)) {
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AviStatusOnline)
                         }
                     }
@@ -1381,8 +1381,8 @@ fun PantallaConfirmacion(
         Button(
             onClick = {
                 val viaNum = viaInput.toIntOrNull()
-                if (placaInput.isBlank()) {
-                    errorMessage = "La placa no puede estar vacía."
+                if (!AviParser.isValidPeruPlate(placaInput)) {
+                    errorMessage = "Formato de placa inválido. Usa 1 letra, 2 caracteres alfanuméricos y 3 números."
                     return@Button
                 }
                 if (viaNum == null || viaNum <= 0) {
