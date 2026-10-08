@@ -357,6 +357,23 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "es-PE")
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+
+                    // Dar margen a pausas naturales entre acción, vía y placa.
+                    // Algunos motores pueden ignorar estos extras, pero los que los
+                    // soportan evitarán cortar el dictado demasiado pronto.
+                    putExtra(
+                        RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
+                        1200L
+                    )
+                    putExtra(
+                        RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+                        700L
+                    )
+                    putExtra(
+                        RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                        1100L
+                    )
+
                     putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, appContext.packageName)
                 }
 
