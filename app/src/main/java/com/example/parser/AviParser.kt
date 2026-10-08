@@ -871,17 +871,19 @@ object AviParser {
         val target = placaSnippet.trim()
         if (target.isBlank()) return ""
 
+        // Solo aceptar directamente una placa si TODO el fragmento posterior a
+        // "placa" es exactamente la matrícula. Si existe texto adicional,
+        // reconstruirla completa para no ignorar una corrección final.
         val compactCandidate = target
             .uppercase(Locale.ROOT)
             .replace("-", "")
             .replace(" ", "")
 
-        Regex("[A-Z][A-Z0-9]{2}\\d{3}")
-            .find(compactCandidate)
-            ?.value
-            ?.let { return it }
+        if (compactCandidate.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))) {
+            return compactCandidate
+        }
 
-        val plateBuilder = StringBuilder()
+        val symbols = mutableListOf<Char>()
 
         val tokens = target
             .split(" ")
@@ -893,76 +895,109 @@ object AviParser {
             }
 
         var index = 0
-        while (index < tokens.size && plateBuilder.length < 6) {
+        while (index < tokens.size) {
             val token = tokens[index]
 
-            // Primero intentar alias fonéticos de dos palabras:
+            // Alias fonéticos de dos palabras:
             // "ve grande", "doble ve", "i griega", "x ray", etc.
             if (index + 1 < tokens.size) {
                 val pair = "$token ${tokens[index + 1]}"
                 val mappedPair = phoneticAlphabet[pair]
                 if (mappedPair != null) {
-                    plateBuilder.append(mappedPair)
+                    symbols += mappedPair.first()
                     index += 2
                     continue
                 }
             }
 
+            // Bloques numéricos que el ASR puede devolver juntos.
             if (token.all { it.isDigit() }) {
-                for (digit in token) {
-                    if (plateBuilder.length >= 6) break
-                    plateBuilder.append(digit)
-                }
+                token.forEach { symbols += it }
                 index++
                 continue
             }
 
             val mappedDigit = singleDigits[token]
             if (mappedDigit != null) {
-                plateBuilder.append(mappedDigit)
+                symbols += mappedDigit.digitToChar()
                 index++
                 continue
             }
 
             val mappedLetter = phoneticAlphabet[token]
             if (mappedLetter != null) {
-                plateBuilder.append(mappedLetter)
+                symbols += mappedLetter.first()
                 index++
                 continue
             }
 
-            // Solo en las primeras tres posiciones de una placa permitimos
-            // inferencia fonética aproximada. Las posiciones 4-6 son numéricas.
-            if (plateBuilder.length <= 2) {
+            // Inferencia fonética aproximada únicamente mientras todavía
+            // estamos formando las primeras tres posiciones alfanuméricas.
+            if (symbols.size <= 2) {
                 val inferredLetter = inferPhoneticLetter(token)
                 if (inferredLetter != null) {
-                    plateBuilder.append(inferredLetter)
+                    symbols += inferredLetter.first()
                     index++
                     continue
                 }
             }
 
             if (token.length == 1 && token[0].isLetter()) {
-                plateBuilder.append(token.uppercase(Locale.ROOT))
+                symbols += token.uppercase(Locale.ROOT).first()
                 index++
                 continue
             }
 
+            // Android también puede entregar una matrícula parcial o completa
+            // unida en un único token, por ejemplo I1L111.
             if (
-                token.length in 2..6 &&
+                token.length in 2..8 &&
                 token.all { it.isLetterOrDigit() } &&
                 token.any { it.isDigit() }
             ) {
-                token.uppercase(Locale.ROOT).forEach { ch ->
-                    if (plateBuilder.length < 6) {
-                        plateBuilder.append(ch)
-                    }
-                }
+                token.uppercase(Locale.ROOT).forEach { symbols += it }
             }
 
             index++
         }
 
-        return plateBuilder.toString().take(6)
+        if (symbols.isEmpty()) return ""
+
+        // Construir las tres primeras posiciones respetando la estructura:
+        // 1 = letra; 2 y 3 = alfanuméricas.
+        val prefix = mutableListOf<Char>()
+        var symbolIndex = 0
+
+        while (symbolIndex < symbols.size && prefix.size < 3) {
+            val symbol = symbols[symbolIndex]
+            val validForPosition = when (prefix.size) {
+                0 -> symbol.isLetter()
+                else -> symbol.isLetterOrDigit()
+            }
+
+            if (validForPosition) {
+                prefix += symbol
+            }
+            symbolIndex++
+        }
+
+        if (prefix.isEmpty()) return ""
+
+        // Después de las tres primeras posiciones solo interesan números.
+        // Si el ASR insertó un dígito duplicado (ej. I1L111 NEGATIVO),
+        // conservar los ÚLTIMOS tres números pronunciados:
+        // I1L + [1,1,1,0] -> I1L110.
+        val numericTail = symbols
+            .drop(symbolIndex)
+            .filter { it.isDigit() }
+
+        val finalDigits = when {
+            numericTail.size >= 3 -> numericTail.takeLast(3)
+            else -> numericTail
+        }
+
+        return (prefix + finalDigits)
+            .joinToString("")
+            .take(6)
     }
 }
