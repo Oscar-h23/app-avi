@@ -22,6 +22,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -113,6 +114,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -201,74 +203,61 @@ fun AviLoginScreen(repository: IncidentRepository) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(AviPrimaryDark)
-            .padding(24.dp),
+            .background(MaterialTheme.colorScheme.background)
+            .padding(horizontal = 24.dp, vertical = 28.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Logo AVIX
-            Surface(
-                modifier = Modifier.size(96.dp),
-                shape = CircleShape,
-                color = AviNavy,
-                shadowElevation = 8.dp
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = "Logo AVIX",
-                        tint = Color(0xFF00B4D8),
-                        modifier = Modifier.size(52.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "AVIX",
-                fontSize = 32.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                letterSpacing = 2.sp
-            )
-            Text(
-                text = "Asistente de Voz para Incidencias",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF90E0EF)
-            )
-            Text(
-                text = "Control Operativo de Estaciones de Peaje",
-                fontSize = 12.sp,
-                color = Color(0xFF94A3B8)
+            Image(
+                painter = painterResource(id = R.drawable.avix_logo),
+                contentDescription = "AVIX",
+                modifier = Modifier.size(118.dp)
             )
 
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Tarjeta de Login
+            Text(
+                text = "Bienvenido",
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Text(
+                text = "Asistente operativo de voz",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = AviNavy)
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
                     Text(
-                        text = "Identificación de Operador",
-                        fontSize = 16.sp,
+                        text = "Acceso",
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.White
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Ingrese su código asignado para iniciar turno",
+                        text = "Ingresa tu código de trabajador para continuar.",
                         fontSize = 12.sp,
-                        color = Color(0xFF94A3B8)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(18.dp))
@@ -281,50 +270,27 @@ fun AviLoginScreen(repository: IncidentRepository) {
                                 errorMessage = null
                             }
                         },
-                        label = { Text("Código de Trabajador") },
-                        placeholder = { Text("Ej: 2396") },
+                        label = { Text("Código de usuario") },
+                        placeholder = { Text("Ingresa tu código") },
                         leadingIcon = {
-                            Icon(Icons.Default.Badge, contentDescription = null, tint = Color(0xFF00B4D8))
+                            Icon(
+                                Icons.Default.Badge,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .testTag("worker_code_input"),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF00B4D8),
-                            unfocusedBorderColor = Color(0xFF475569),
-                            focusedLabelColor = Color(0xFF00B4D8),
-                            unfocusedLabelColor = Color(0xFF94A3B8),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
-                        )
+                            .testTag("worker_code_input")
                     )
 
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Chip para prueba rápida
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Text(
-                            text = "Código de prueba: 2396",
-                            fontSize = 11.sp,
-                            color = Color(0xFF90E0EF),
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .background(Color(0xFF0D1B2A))
-                                .clickable { codigoInput = "2396" }
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
-                        )
-                    }
-
                     if (errorMessage != null) {
-                        Spacer(modifier = Modifier.height(12.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = Color(0x33DC2626)
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFFDECEC)
                         ) {
                             Row(
                                 modifier = Modifier
@@ -335,35 +301,38 @@ fun AviLoginScreen(repository: IncidentRepository) {
                                 Icon(
                                     Icons.Default.Warning,
                                     contentDescription = null,
-                                    tint = Color(0xFFF87171),
+                                    tint = Color(0xFFD64545),
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = errorMessage!!,
-                                    color = Color(0xFFF87171),
+                                    color = Color(0xFFD64545),
                                     fontSize = 12.sp
                                 )
                             }
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(20.dp))
+                    Spacer(modifier = Modifier.height(18.dp))
 
                     Button(
                         onClick = {
                             val cod = codigoInput.toIntOrNull()
                             if (cod == null || cod <= 0) {
-                                errorMessage = "Por favor ingrese un código numérico válido."
+                                errorMessage = "Ingresa un código válido."
                                 return@Button
                             }
+
                             isLoading = true
                             errorMessage = null
+
                             scope.launch {
                                 val result = repository.login(cod)
                                 isLoading = false
                                 if (result.isFailure) {
-                                    errorMessage = result.exceptionOrNull()?.message ?: "Error al autenticar."
+                                    errorMessage = result.exceptionOrNull()?.message
+                                        ?: "No se pudo iniciar sesión."
                                 } else {
                                     Toast.makeText(context, "Bienvenido a AVIX", Toast.LENGTH_SHORT).show()
                                 }
@@ -372,105 +341,123 @@ fun AviLoginScreen(repository: IncidentRepository) {
                         enabled = !isLoading && codigoInput.isNotBlank(),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(52.dp)
+                            .height(50.dp)
                             .testTag("login_button"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF0077B6),
-                            contentColor = Color.White
+                            containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
                         if (isLoading) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(24.dp),
+                                modifier = Modifier.size(20.dp),
                                 color = Color.White,
                                 strokeWidth = 2.dp
                             )
-                            Spacer(modifier = Modifier.width(10.dp))
-                            Text("Verificando credenciales...")
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Verificando...")
                         } else {
-                            Text(
-                                text = "INGRESAR A TURNO",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
-                            )
+                            Text("Ingresar", fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Configuración rápida de URL de desarrollo
             Row(
-                modifier = Modifier
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color(0xFF1B263B))
-                    .clickable { showUrlDialog = true }
-                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Ajustar URL",
-                    tint = Color(0xFF90E0EF),
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Backend: ${repository.getBaseUrl()}",
-                    fontSize = 11.sp,
-                    color = Color(0xFF94A3B8)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(
+                                when (connectionState) {
+                                    ApiConnectionState.ONLINE -> AviStatusOnline
+                                    ApiConnectionState.OFFLINE -> AviStatusOffline
+                                    ApiConnectionState.SIN_CONFIGURAR -> AviStatusPending
+                                }
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = when (connectionState) {
+                            ApiConnectionState.ONLINE -> "Servidor disponible"
+                            ApiConnectionState.OFFLINE -> "Servidor sin conexión"
+                            ApiConnectionState.SIN_CONFIGURAR -> "Servidor por configurar"
+                        },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { showUrlDialog = true },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Settings,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Servidor", fontSize = 11.sp)
+                }
             }
         }
     }
 
-    // Diálogo para ajustar URL antes del login
     if (showUrlDialog) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { showUrlDialog = false },
-            title = { Text("Configurar URL de SIGO-BACK") },
+            title = { Text("Configurar servidor") },
             text = {
                 Column {
                     Text(
-                        "Para pruebas desde emulador use http://10.0.2.2:8080/\nPara celular físico use la IP de su Mac (ej: http://192.168.1.50:8080/)",
+                        "Selecciona una dirección o escribe la URL del backend.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
                         value = tempUrl,
                         onValueChange = { tempUrl = it },
-                        label = { Text("URL Base") },
+                        label = { Text("URL base") },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = { tempUrl = "http://192.168.1.53:8080/" },
+                            onClick = { tempUrl = "http://172.20.10.8:8080/" },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("192.168.1.53 (Mac)", fontSize = 10.sp)
+                            Text("Mac local", fontSize = 10.sp)
                         }
                         OutlinedButton(
                             onClick = { tempUrl = "http://10.0.2.2:8080/" },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("10.0.2.2 (Emulador)", fontSize = 10.sp)
+                            Text("Emulador", fontSize = 10.sp)
                         }
                     }
                 }
             },
             confirmButton = {
-                Button(onClick = {
-                    repository.updateConfig(tempUrl)
-                    showUrlDialog = false
-                }) {
+                Button(
+                    onClick = {
+                        repository.updateConfig(tempUrl)
+                        repository.verificarConexionSigo()
+                        showUrlDialog = false
+                    }
+                ) {
                     Text("Guardar")
                 }
             },
@@ -547,7 +534,7 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "AVIX • Peajes",
+                                text = "AVIX",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -777,20 +764,33 @@ fun PantallaInicio(
     val usuario = repository.getUsuarioActual()
     val connectionState by repository.connectionState.collectAsState()
     val scope = rememberCoroutineScope()
-    var isManualSyncing by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(16.dp)
     ) {
-        // Tarjeta de Bienvenida
+        Text(
+            text = "Inicio",
+            fontWeight = FontWeight.Bold,
+            fontSize = 22.sp,
+            color = MaterialTheme.colorScheme.onBackground
+        )
+        Text(
+            text = "Registro rápido de eventos operativos",
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = AviNavy)
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -799,307 +799,168 @@ fun PantallaInicio(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Surface(
-                    shape = CircleShape,
-                    color = Color(0xFF0077B6),
-                    modifier = Modifier.size(46.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    modifier = Modifier.size(44.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             Icons.Default.Person,
                             contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(24.dp)
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
+
                 Spacer(modifier = Modifier.width(12.dp))
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Bienvenido, ${usuario?.nombre ?: "Operador"}",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 16.sp
+                        text = usuario?.nombre ?: "Operador",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp
                     )
                     Text(
-                        text = "Código #${usuario?.codigo ?: "---"} • Plaza ${usuario?.plaza ?: "P4"}",
-                        color = Color(0xFF90E0EF),
-                        fontSize = 12.sp
+                        text = "${usuario?.plaza ?: "Sin plaza"} • ${usuario?.rol ?: "OPERADOR"}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
                 Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = Color(0xFF0D1B2A)
+                    shape = RoundedCornerShape(20.dp),
+                    color = when (connectionState) {
+                        ApiConnectionState.ONLINE -> Color(0xFFEAF8F2)
+                        ApiConnectionState.OFFLINE -> Color(0xFFFDECEC)
+                        ApiConnectionState.SIN_CONFIGURAR -> Color(0xFFFFF7E6)
+                    }
                 ) {
                     Text(
-                        text = usuario?.rol ?: "OPERADOR",
-                        color = Color(0xFF00B4D8),
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        text = when (connectionState) {
+                            ApiConnectionState.ONLINE -> "Online"
+                            ApiConnectionState.OFFLINE -> "Offline"
+                            ApiConnectionState.SIN_CONFIGURAR -> "Config"
+                        },
+                        color = when (connectionState) {
+                            ApiConnectionState.ONLINE -> AviStatusOnline
+                            ApiConnectionState.OFFLINE -> AviStatusOffline
+                            ApiConnectionState.SIN_CONFIGURAR -> AviStatusPending
+                        },
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(20.dp))
 
-        // Tarjeta de Estado y Registros Pendientes
+        Text(
+            text = "Nuevo registro",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 14.sp
+        )
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        Button(
+            onClick = onIniciarHablar,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(58.dp),
+            shape = RoundedCornerShape(14.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Icon(
+                Icons.Default.Mic,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Registrar por voz",
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 15.sp
+            )
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        OutlinedButton(
+            onClick = onRegistroManual,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(50.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                Icons.Default.Edit,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Registro manual")
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = if (pendientesCount > 0) Color(0xFFFFFBEB) else Color(0xFFF0FDF4)
-            )
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = if (pendientesCount > 0) Icons.Default.CloudOff else Icons.Default.CloudDone,
-                        contentDescription = null,
-                        tint = if (pendientesCount > 0) AviStatusPending else AviStatusOnline,
-                        modifier = Modifier.size(28.dp)
+                Icon(
+                    Icons.Default.Sync,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Sincronización",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
                     )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = if (pendientesCount > 0) "$pendientesCount registros pendientes" else "Todos los registros sincronizados",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                            color = if (pendientesCount > 0) Color(0xFF92400E) else Color(0xFF166534)
-                        )
-                        Text(
-                            text = if (connectionState == ApiConnectionState.ONLINE) "Conexión a SIGO activa" else "Modo sin conexión • Se sincronizará automáticamente",
-                            fontSize = 11.sp,
-                            color = if (pendientesCount > 0) Color(0xFFB45309) else Color(0xFF15803D)
-                        )
-                    }
+                    Text(
+                        text = if (pendientesCount == 0)
+                            "Todos los registros están sincronizados"
+                        else
+                            "$pendientesCount registro(s) pendiente(s)",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
 
                 if (pendientesCount > 0) {
-                    Button(
+                    OutlinedButton(
                         onClick = {
-                            isManualSyncing = true
                             scope.launch {
                                 repository.sincronizarPendientes()
-                                isManualSyncing = false
                             }
                         },
-                        enabled = !isManualSyncing,
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AviStatusPending)
+                        shape = RoundedCornerShape(10.dp)
                     ) {
-                        if (isManualSyncing) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
-                        } else {
-                            Text("Sincronizar", fontSize = 11.sp)
-                        }
+                        Text("Sincronizar", fontSize = 11.sp)
                     }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(18.dp))
-
-        // Tarjeta Guía de Formato de Dictado: Acción + Vía + Placa
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
-            )
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                } else {
                     Icon(
-                        imageVector = Icons.Default.Info,
+                        Icons.Default.CheckCircle,
                         contentDescription = null,
-                        tint = Color(0xFF0077B6),
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "FORMATO RECOMENDADO: [ACCIÓN] + [VÍA] + [PLACA]",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 11.sp,
-                        color = Color(0xFF0077B6),
-                        letterSpacing = 0.5.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    // Paso 1
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = AviActionFuga,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("1. ACCIÓN", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("Fuga / Derivado", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        }
-                    }
-
-                    // Paso 2
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFF0077B6),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("2. VÍA", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                            Text("vía 101", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        }
-                    }
-
-                    // Paso 3
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = AviNavy,
-                        modifier = Modifier.weight(1.3f)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(vertical = 6.dp, horizontal = 4.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("3. PLACA FONÉTICA", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = Color(0xFF90E0EF))
-                            Text("placa BTL 2 4 5", fontSize = 11.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = "🗣 Ejemplo: \"Fuga vía ciento uno placa Bravo Tango Lima dos cuatro cinco\"",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // BOTÓN GRANDE HABLAR (Botón de Acción Primaria)
-        Surface(
-            modifier = Modifier
-                .size(160.dp)
-                .clip(CircleShape)
-                .clickable { onIniciarHablar() }
-                .testTag("big_voice_button"),
-            color = AviNavy,
-            shadowElevation = 10.dp
-        ) {
-            Box(contentAlignment = Alignment.Center) {
-                Surface(
-                    modifier = Modifier.size(130.dp),
-                    shape = CircleShape,
-                    color = Color(0xFF0077B6)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Mic,
-                            contentDescription = "Hablar",
-                            tint = Color.White,
-                            modifier = Modifier.size(54.dp)
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "HABLAR",
-                            color = Color.White,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 16.sp,
-                            letterSpacing = 1.sp
-                        )
-                    }
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(10.dp))
-        Text(
-            text = "Toque para dictar una incidencia por voz",
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Botón Secundario: REGISTRO MANUAL
-        OutlinedButton(
-            onClick = onRegistroManual,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-                .testTag("manual_register_button"),
-            shape = RoundedCornerShape(12.dp)
-        ) {
-            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(modifier = Modifier.width(8.dp))
-            Text("REGISTRO MANUAL", fontWeight = FontWeight.SemiBold)
-        }
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        // Atajos para prueba rápida en emulador o laboratorio
-        Text(
-            text = "FRASES DE PRUEBA (SIMULADOR DE DICTADO)",
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            val frases = listOf(
-                "Fuga vía ciento uno placa Bravo Tango Lima dos cuatro cinco",
-                "Derivado vía ciento dos placa Alfa Bravo Charlie uno dos tres",
-                "Bravo Tango Lima dos cuatro cinco fuga vía ciento uno"
-            )
-            for (f in frases) {
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    modifier = Modifier
-                        .clickable { onSimularFrase(f) }
-                        .padding(2.dp)
-                ) {
-                    Text(
-                        text = "🗣 \"$f\"",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        tint = AviStatusOnline,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -1121,7 +982,10 @@ fun PantallaEscucha(
 
     var hasAudioPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -1132,11 +996,14 @@ fun PantallaEscucha(
         if (granted) {
             speechManager.startListening()
         } else {
-            Toast.makeText(context, "Permiso de micrófono requerido para dictar.", Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                context,
+                "Permiso de micrófono requerido.",
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 
-    // Iniciar escucha al entrar a la pantalla si hay permiso
     LaunchedEffect(hasAudioPermission) {
         if (hasAudioPermission) {
             speechManager.startListening()
@@ -1145,21 +1012,22 @@ fun PantallaEscucha(
         }
     }
 
-    // Si ya reconoció texto completo (Etapa 4), transicionar a revisión
     LaunchedEffect(voiceState.stage, voiceState.recognizedText) {
-        if (voiceState.stage == DiagnosticStage.STAGE_4 && voiceState.recognizedText.isNotBlank()) {
-            kotlinx.coroutines.delay(400)
+        if (
+            voiceState.stage == DiagnosticStage.STAGE_4 &&
+            voiceState.recognizedText.isNotBlank()
+        ) {
+            kotlinx.coroutines.delay(350)
             onTextoFinalizado(voiceState.recognizedText)
         }
     }
 
-    // Animación de onda de micrófono
     val infiniteTransition = rememberInfiniteTransition(label = "pulse")
     val pulseScale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = if (voiceState.isListening) 1.25f else 1f,
+        targetValue = if (voiceState.isListening) 1.08f else 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = FastOutSlowInEasing),
+            animation = tween(700, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"
@@ -1168,219 +1036,154 @@ fun PantallaEscucha(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Banner explicativo del orden de dictado
-        Card(
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.padding(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = Color(0xFF0077B6),
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "ORDEN DE DICTADO: [ACCIÓN] + [VÍA] + [PLACA]",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 11.sp,
-                        color = Color(0xFF0077B6),
-                        letterSpacing = 0.5.sp
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Surface(shape = RoundedCornerShape(6.dp), color = AviActionFuga) {
-                        Text(
-                            text = "1. FUGA",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                    }
-                    Text(" ➔ ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Surface(shape = RoundedCornerShape(6.dp), color = Color(0xFF0077B6)) {
-                        Text(
-                            text = "2. VÍA 101",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                    }
-                    Text(" ➔ ", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Surface(shape = RoundedCornerShape(6.dp), color = AviNavy) {
-                        Text(
-                            text = "3. PLACA BTL 245",
-                            color = Color.White,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
+            IconButton(onClick = onCancelar) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Volver"
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+            Column {
                 Text(
-                    text = "🗣 \"Fuga vía ciento uno placa Bravo Tango Lima dos cuatro cinco\"",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center
+                    text = "Dictado por voz",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                )
+                Text(
+                    text = "Habla de forma clara y continua",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        // Ícono animado de micrófono
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.primaryContainer
+        ) {
+            Text(
+                text = "ACCIÓN  →  VÍA  →  PLACA",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(48.dp))
+
         Box(
-            modifier = Modifier.size(200.dp),
+            modifier = Modifier
+                .size(154.dp)
+                .scale(pulseScale),
             contentAlignment = Alignment.Center
         ) {
-            // Onda exterior
-            Box(
-                modifier = Modifier
-                    .size(160.dp)
-                    .scale(pulseScale)
-                    .clip(CircleShape)
-                    .background(Color(0x330077B6))
-            )
-            // Núcleo
             Surface(
-                modifier = Modifier.size(110.dp),
+                modifier = Modifier
+                    .size(130.dp)
+                    .clickable {
+                        if (voiceState.isListening) {
+                            speechManager.stopListening()
+                        } else {
+                            speechManager.startListening()
+                        }
+                    },
                 shape = CircleShape,
-                color = if (voiceState.isListening) AviNavy else Color(0xFFDC2626)
+                color = if (voiceState.isListening)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    if (voiceState.isListening)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.outline
+                )
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = "Micrófono",
-                        tint = Color.White,
-                        modifier = Modifier.size(50.dp)
+                        tint = if (voiceState.isListening)
+                            Color.White
+                        else
+                            MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp)
                     )
                 }
             }
         }
 
-        // Diagnóstico en tiempo real y texto reconocido
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Barra de diagnóstico de 4 etapas
-            Text(
-                text = voiceState.stageDescription,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-                color = Color(0xFF0077B6)
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = { voiceState.stage.step / 4f },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp)),
-                color = Color(0xFF0077B6),
-                trackColor = MaterialTheme.colorScheme.surfaceVariant
-            )
+        Spacer(modifier = Modifier.height(16.dp))
 
-            Spacer(modifier = Modifier.height(20.dp))
+        Text(
+            text = if (voiceState.isListening)
+                "Escuchando..."
+            else
+                "Pulsa el micrófono para hablar",
+            fontWeight = FontWeight.SemiBold,
+            fontSize = 15.sp
+        )
 
-            // Cuadro con texto transcrito en tiempo real
+        if (voiceState.recognizedText.isNotBlank()) {
+            Spacer(modifier = Modifier.height(24.dp))
+
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(110.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outline
+                ),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    if (voiceState.recognizedText.isNotBlank()) {
-                        Text(
-                            text = "\"${voiceState.recognizedText}\"",
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Medium,
-                            textAlign = TextAlign.Center
-                        )
-                    } else {
-                        Text(
-                            text = "Hable ahora al micrófono...",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
-                        )
-                    }
+                Column(modifier = Modifier.padding(14.dp)) {
+                    Text(
+                        text = "Texto reconocido",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = voiceState.recognizedText,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium
+                    )
                 }
-            }
-
-            if (voiceState.errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = voiceState.errorMessage!!,
-                    color = Color(0xFFDC2626),
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center
-                )
             }
         }
 
-        // Botones de control
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            OutlinedButton(
-                onClick = {
-                    speechManager.stopListening()
-                    onCancelar()
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Text("CANCELAR")
-            }
+        if (voiceState.errorMessage != null) {
+            Spacer(modifier = Modifier.height(14.dp))
+            Text(
+                text = voiceState.errorMessage ?: "",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center
+            )
+        }
 
-            Button(
-                onClick = {
-                    speechManager.stopListening()
-                    val txt = voiceState.recognizedText
-                    if (txt.isNotBlank()) {
-                        onTextoFinalizado(txt)
-                    } else {
-                        onTextoFinalizado("Fuga vía 101 placa BTL245")
-                    }
-                },
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0077B6))
-            ) {
-                Icon(Icons.Default.Stop, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("FINALIZAR")
-            }
+        Spacer(modifier = Modifier.weight(1f))
+
+        OutlinedButton(
+            onClick = onCancelar,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Text("Cancelar")
         }
     }
 }
@@ -1401,7 +1204,7 @@ fun PantallaConfirmacion(
     val context = LocalContext.current
 
     var placaInput by remember { mutableStateOf(parsedCommand.placa) }
-    var viaInput by remember { mutableStateOf(parsedCommand.via?.toString() ?: "101") }
+    var viaInput by remember { mutableStateOf(parsedCommand.via?.toString() ?: "") }
     var accionInput by remember { mutableStateOf(parsedCommand.accion) }
     var textoOriginalInput by remember { mutableStateOf(parsedCommand.textoOriginal) }
 
@@ -1996,10 +1799,10 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
                         Text("10.0.2.2 (Emulador)", fontSize = 10.sp)
                     }
                     OutlinedButton(
-                        onClick = { urlInput = "http://192.168.1.53:8080/" },
+                        onClick = { urlInput = "http://172.20.10.8:8080/" },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("192.168.1.53 (Mac)", fontSize = 10.sp)
+                        Text("172.20.10.8 (Mac)", fontSize = 10.sp)
                     }
                 }
 
