@@ -4,9 +4,25 @@ import com.example.model.ParsedCommand
 import java.text.Normalizer
 import java.util.Locale
 
+enum class AviCommandStage {
+    ACCION,
+    VIA,
+    PLACA,
+    COMPLETO
+}
+
+data class AviCommandAnalysis(
+    val stage: AviCommandStage,
+    val parsed: ParsedCommand,
+    val actionDetected: Boolean,
+    val viaMarkerDetected: Boolean,
+    val plateMarkerDetected: Boolean,
+    val platePositions: List<Boolean>,
+    val prompt: String
+)
+
 object AviParser {
 
-    // Diccionario explícito de alfabeto fonético OTAN y variantes a letras
     private val phoneticAlphabet = mapOf(
         "alfa" to "A", "alpha" to "A",
         "bravo" to "B",
@@ -20,7 +36,7 @@ object AviParser {
         "juliet" to "J", "julieta" to "J",
         "kilo" to "K",
         "lima" to "L",
-        "mike" to "M", "maik" to "M",
+        "mike" to "M", "maik" to "M", "mic" to "M",
         "november" to "N", "noviembre" to "N",
         "oscar" to "O",
         "papa" to "P",
@@ -30,11 +46,10 @@ object AviParser {
         "tango" to "T",
         "uniform" to "U", "uniforme" to "U",
         "victor" to "V",
-        "whiskey" to "W", "whisky" to "W", "wisky" to "W",
-        "xray" to "X", "ray" to "X", "equis" to "X",
+        "whiskey" to "W", "whisky" to "W", "wisky" to "W", "wiski" to "W",
+        "xray" to "X", "exray" to "X", "equisray" to "X", "ray" to "X", "equis" to "X",
         "yankee" to "Y", "yanki" to "Y",
         "zulu" to "Z",
-        // Letras estándar en español
         "a" to "A",
         "be" to "B", "ve grande" to "B", "be alta" to "B",
         "ce" to "C",
@@ -62,12 +77,9 @@ object AviParser {
         "zeta" to "Z", "ceta" to "Z"
     )
 
-    // Dígitos operativos: acepta números normales y código Q usado por AVIX.
-    // 0=NEGATIVO, 1=PRIMERO, 2=SEGUNDO, 3=TERCERO ... 9=NOVENO.
-    // Se incluyen variantes gramaticales porque SpeechRecognizer puede devolver
-    // "primer", "primera", "segunda", etc. dependiendo del contexto.
+    // Código numérico operativo:
+    // 0 NEGATIVO, 1 PRIMERO, 2 SEGUNDO, ... 9 NOVENO.
     private val singleDigits = mapOf(
-        // Código Q / ordinales operativos
         "negativo" to 0, "negativa" to 0,
         "primero" to 1, "primer" to 1, "primera" to 1,
         "segundo" to 2, "segunda" to 2,
@@ -78,8 +90,6 @@ object AviParser {
         "septimo" to 7, "septima" to 7,
         "octavo" to 8, "octava" to 8,
         "noveno" to 9, "novena" to 9,
-
-        // Compatibilidad con pronunciación numérica convencional
         "cero" to 0,
         "uno" to 1, "un" to 1, "una" to 1,
         "dos" to 2,
@@ -108,16 +118,19 @@ object AviParser {
         "mil" to 1000
     )
 
-    // Alias configurables para acciones
-    private val aliasFuga = listOf("fuga", "fugado", "se dio a la fuga", "se fugo", "evasion")
-    private val aliasDerivado = listOf("derivado", "derivar", "desvio", "desviado", "derivacion", "derivada")
+    private val aliasFuga = listOf(
+        "fuga", "fugado", "se dio a la fuga", "se fugo", "evasion"
+    )
+    private val aliasDerivado = listOf(
+        "derivado", "derivar", "desvio", "desviado", "derivacion", "derivada"
+    )
 
-    /**
-     * Normaliza el texto removiendo tildes, signos de puntuación y espacios redundantes
-     */
+    private val viaKeywords = listOf("via ", "carril ", "pista ", "numero ")
+
     fun normalize(text: String): String {
         val withoutAccents = Normalizer.normalize(text, Normalizer.Form.NFD)
             .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+
         return withoutAccents
             .lowercase(Locale.ROOT)
             .replace(",", " ")
@@ -125,57 +138,156 @@ object AviParser {
             .replace(";", " ")
             .replace(":", " ")
             .replace("-", " ")
+            .replace(Regex("\\bplacas\\b"), "placa")
+            // Confusión frecuente del reconocedor dentro de este dominio.
+            .replace(Regex("\\bdia(?=\\s+(?:\\d|primero|primer|primera|segundo|segunda|tercero|tercera|cuarto|quinta|quinto|negativo))"), "via")
             .replace(Regex("\\s+"), " ")
             .trim()
     }
 
-    /**
-     * Interpreta un comando dictado localmente sin depender de ninguna IA externa.
-     * Ejemplo Q: "Fuga vía primero negativo primero placa Alfa Bravo Charlie primero segundo tercero"
-     * -> Placa: ABC123, Vía: 101, Acción: FUGA
-     */
-    /**
-     * Puntúa una hipótesis de SpeechRecognizer según la estructura esperada por AVIX.
-     * Se priorizan marcadores explícitos y un resultado completamente válido.
-     */
-    fun scoreCandidate(rawText: String): Int {
+    private fun actionDetected(clean: String): Boolean {
+        return aliasFuga.any { clean.contains(it) } ||
+            aliasDerivado.any { clean.contains(it) }
+    }
+
+    private fun viaMarkerPosition(clean: String): Pair<Int, Int> {
+        var start = -1
+        var len = 0
+        for (kw in viaKeywords) {
+            val idx = clean.indexOf(kw)
+            if (idx >= 0 && (start == -1 || idx < start)) {
+                start = idx
+                len = kw.length
+            }
+        }
+        return start to len
+    }
+
+    private fun plateMarkerPosition(clean: String): Pair<Int, Int> {
+        val marker = "placa "
+        val idx = clean.indexOf(marker)
+        return idx to if (idx >= 0) marker.length else 0
+    }
+
+    fun platePositionValidity(placa: String): List<Boolean> {
+        val normalized = placa
+            .uppercase(Locale.ROOT)
+            .replace("-", "")
+            .replace(" ", "")
+
+        return (0..5).map { index ->
+            val ch = normalized.getOrNull(index) ?: return@map false
+            when (index) {
+                0 -> ch.isLetter()
+                1, 2 -> ch.isLetterOrDigit()
+                else -> ch.isDigit()
+            }
+        }
+    }
+
+    fun isValidPeruPlate(placa: String): Boolean {
+        val normalized = placa
+            .uppercase(Locale.ROOT)
+            .replace("-", "")
+            .replace(" ", "")
+
+        return normalized.length == 6 &&
+            normalized.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))
+    }
+
+    fun analyzeCommand(
+        rawText: String,
+        allowedVias: Set<Int> = emptySet()
+    ): AviCommandAnalysis {
+        val clean = normalize(rawText)
+        val parsed = parse(rawText, allowedVias)
+        val hasAction = actionDetected(clean)
+        val hasViaMarker = viaMarkerPosition(clean).first >= 0
+        val hasPlateMarker = plateMarkerPosition(clean).first >= 0
+        val viaIsAllowed = parsed.via != null &&
+            parsed.via > 0 &&
+            (allowedVias.isEmpty() || parsed.via in allowedVias)
+        val plateValid = isValidPeruPlate(parsed.placa)
+
+        val stage = when {
+            !hasAction -> AviCommandStage.ACCION
+            !hasViaMarker || !viaIsAllowed -> AviCommandStage.VIA
+            !hasPlateMarker || !plateValid -> AviCommandStage.PLACA
+            else -> AviCommandStage.COMPLETO
+        }
+
+        val prompt = when (stage) {
+            AviCommandStage.ACCION -> "Diga la acción: FUGA o DERIVADO."
+            AviCommandStage.VIA -> if (
+                parsed.via != null &&
+                allowedVias.isNotEmpty() &&
+                parsed.via !in allowedVias
+            ) {
+                "La vía ${parsed.via} no corresponde a esta plaza. Repita solo la vía."
+            } else {
+                "No se reconoció la vía. Repita solo la vía."
+            }
+            AviCommandStage.PLACA -> "No se reconoció una placa válida. Repita solo la placa."
+            AviCommandStage.COMPLETO -> "Comando completo."
+        }
+
+        return AviCommandAnalysis(
+            stage = stage,
+            parsed = parsed,
+            actionDetected = hasAction,
+            viaMarkerDetected = hasViaMarker,
+            plateMarkerDetected = hasPlateMarker,
+            platePositions = platePositionValidity(parsed.placa),
+            prompt = prompt
+        )
+    }
+
+    fun scoreCandidate(
+        rawText: String,
+        allowedVias: Set<Int> = emptySet()
+    ): Int {
         val clean = normalize(rawText)
         if (clean.isBlank()) return Int.MIN_VALUE
 
-        val parsed = parse(rawText)
+        val analysis = analyzeCommand(rawText, allowedVias)
+        val parsed = analysis.parsed
         var score = 0
 
-        // Estructura operativa explícita.
-        if (aliasFuga.any { clean.contains(it) } || aliasDerivado.any { clean.contains(it) }) score += 20
-        if (Regex("\\b(via|carril|pista)\\b").containsMatchIn(clean)) score += 25
-        if (Regex("\\bplaca\\b").containsMatchIn(clean)) score += 35
+        if (analysis.actionDetected) score += 20
+        if (analysis.viaMarkerDetected) score += 25
+        if (analysis.plateMarkerDetected) score += 35
 
-        // El formato operativo recomendado es ACCIÓN -> VÍA -> PLACA.
         val actionPositions = (aliasFuga + aliasDerivado)
             .map { clean.indexOf(it) }
             .filter { it >= 0 }
         val actionPos = actionPositions.minOrNull() ?: -1
-        val viaPos = listOf("via ", "carril ", "pista ")
+        val viaPos = viaKeywords
             .map { clean.indexOf(it) }
             .filter { it >= 0 }
             .minOrNull() ?: -1
         val placaPos = clean.indexOf("placa ")
 
         if (actionPos >= 0 && viaPos > actionPos && placaPos > viaPos) {
-            score += 25
+            score += 30
         }
 
-        // Calidad de los datos interpretados.
-        if (parsed.via != null && parsed.via > 0) score += 30
-        if (parsed.placa.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))) score += 50
-        else if (parsed.placa.isNotBlank()) score += 15
+        if (parsed.via != null && parsed.via > 0) {
+            score += 25
+            if (allowedVias.isEmpty() || parsed.via in allowedVias) {
+                score += 20
+            } else {
+                score -= 60
+            }
+        }
 
-        if (parsed.valido) score += 80
-        score -= parsed.errores.size * 25
+        // La placa se evalúa posición por posición, no solo como una cadena final.
+        score += analysis.platePositions.count { it } * 8
+        if (isValidPeruPlate(parsed.placa)) score += 50
+
+        if (analysis.stage == AviCommandStage.COMPLETO && parsed.valido) score += 100
+        score -= parsed.errores.size * 30
         score -= parsed.advertencias.size * 5
 
-        // Si SpeechRecognizer entendió expresiones del código Q, es una señal positiva
-        // dentro de este dominio operativo.
         val qTokens = setOf(
             "negativo", "negativa",
             "primero", "primer", "primera",
@@ -190,13 +302,10 @@ object AviParser {
         return score
     }
 
-    /**
-     * Elige la mejor alternativa del reconocimiento de voz en vez de aceptar
-     * automáticamente la primera hipótesis devuelta por Android.
-     */
     fun selectBestHypothesis(
         candidates: List<String>,
-        confidenceScores: FloatArray? = null
+        confidenceScores: FloatArray? = null,
+        allowedVias: Set<Int> = emptySet()
     ): String {
         if (candidates.isEmpty()) return ""
 
@@ -207,8 +316,9 @@ object AviParser {
                     ?.takeIf { it >= 0f }
                     ?: 0f
 
-                // La confianza del motor desempata, pero la estructura AVIX pesa más.
-                val combinedScore = scoreCandidate(candidate) + (confidence * 20f)
+                val combinedScore =
+                    scoreCandidate(candidate, allowedVias) + (confidence * 20f)
+
                 candidate to combinedScore
             }
             .maxByOrNull { it.second }
@@ -216,7 +326,10 @@ object AviParser {
             .orEmpty()
     }
 
-    fun parse(rawText: String): ParsedCommand {
+    fun parse(
+        rawText: String,
+        allowedVias: Set<Int> = emptySet()
+    ): ParsedCommand {
         val clean = normalize(rawText)
 
         if (clean.isBlank()) {
@@ -233,127 +346,160 @@ object AviParser {
         val errores = mutableListOf<String>()
         val advertencias = mutableListOf<String>()
 
-        // 1. Identificar Acción (FUGA o DERIVADO)
-        var accion = "FUGA"
-        var accionDetectada = false
-
         val hasDerivado = aliasDerivado.any { clean.contains(it) }
         val hasFuga = aliasFuga.any { clean.contains(it) }
 
-        if (hasDerivado && !hasFuga) {
-            accion = "DERIVADO"
-            accionDetectada = true
-        } else if (hasFuga && !hasDerivado) {
-            accion = "FUGA"
-            accionDetectada = true
-        } else if (hasDerivado && hasFuga) {
-            // Ambigüedad detectada
-            accion = "FUGA"
-            advertencias.add("Ambigüedad en acción detectada (menciona fuga y derivado). Se asignó FUGA por defecto.")
-        } else {
-            accion = "FUGA"
-            advertencias.add("No se mencionó acción explícita (FUGA o DERIVADO). Se sugiere revisar.")
+        val accion = when {
+            hasDerivado && !hasFuga -> "DERIVADO"
+            hasFuga && !hasDerivado -> "FUGA"
+            else -> "FUGA"
         }
 
-        // 2. Extraer secciones de Placa y Vía
+        when {
+            hasDerivado && hasFuga ->
+                errores.add("Se detectaron FUGA y DERIVADO a la vez. Repita la acción.")
+            !hasDerivado && !hasFuga ->
+                errores.add("No se detectó una acción. Diga FUGA o DERIVADO.")
+        }
+
         var viaWords = ""
         var placaWords = ""
 
-        val viaKeywords = listOf("via ", "carril ", "pista ", "numero ")
-        // La placa solo se interpreta cuando el usuario dice explícitamente "placa".
-        val placaKeywords = listOf("placa ")
+        val (viaStart, viaKeyLen) = viaMarkerPosition(clean)
+        val (placaStart, placaKeyLen) = plateMarkerPosition(clean)
 
-        var viaStart = -1
-        var viaKeyLen = 0
-        for (kw in viaKeywords) {
-            val idx = clean.indexOf(kw)
-            if (idx != -1 && (viaStart == -1 || idx < viaStart)) {
-                viaStart = idx
-                viaKeyLen = kw.length
-            }
-        }
-
-        var placaStart = -1
-        var placaKeyLen = 0
-        for (kw in placaKeywords) {
-            val idx = clean.indexOf(kw)
-            if (idx != -1 && (placaStart == -1 || idx < placaStart)) {
-                placaStart = idx
-                placaKeyLen = kw.length
-            }
-        }
-
-        if (placaStart != -1 && viaStart != -1) {
+        if (placaStart >= 0 && viaStart >= 0) {
             if (placaStart < viaStart) {
-                // Formato: "placa ... via ..."
                 placaWords = clean.substring(placaStart + placaKeyLen, viaStart).trim()
                 viaWords = clean.substring(viaStart + viaKeyLen).trim()
+                advertencias.add("Se recomienda dictar en el orden ACCIÓN, VÍA, PLACA.")
             } else {
-                // Formato: "via ... placa ..."
                 viaWords = clean.substring(viaStart + viaKeyLen, placaStart).trim()
                 placaWords = clean.substring(placaStart + placaKeyLen).trim()
             }
-        } else if (placaStart != -1) {
+        } else if (placaStart >= 0) {
             placaWords = clean.substring(placaStart + placaKeyLen).trim()
-        } else if (viaStart != -1) {
+        } else if (viaStart >= 0) {
             viaWords = clean.substring(viaStart + viaKeyLen).trim()
-            // No intentar inferir una placa si no se dijo explícitamente "placa".
-            placaWords = ""
         } else {
-            // Sin la palabra "placa", no se interpreta ninguna matrícula.
-            placaWords = ""
             viaWords = clean
         }
 
-        // Limpiar palabras de acción de las subcadenas para no contaminar placa o vía
-        for (alias in (aliasFuga + aliasDerivado)) {
-            placaWords = placaWords.replace(Regex("\\b$alias\\b"), " ").trim()
-            viaWords = viaWords.replace(Regex("\\b$alias\\b"), " ").trim()
+        for (alias in aliasFuga + aliasDerivado) {
+            placaWords = placaWords.replace(Regex("\\b${Regex.escape(alias)}\\b"), " ").trim()
+            viaWords = viaWords.replace(Regex("\\b${Regex.escape(alias)}\\b"), " ").trim()
         }
 
-        // 3. Parser de Placa
         val placaParsed = parsePlaca(placaWords)
-        if (placaParsed.isBlank()) {
-            errores.add("No se detectó la placa del vehículo. Por favor dictar o ingresar la placa.")
-        } else if (!isValidPeruPlate(placaParsed)) {
-            errores.add(
-                "La placa detectada ($placaParsed) no cumple el formato esperado: " +
-                    "1 letra, 2 caracteres alfanuméricos y 3 números."
-            )
+        when {
+            placaStart < 0 ->
+                errores.add("No se detectó la palabra PLACA.")
+            placaParsed.isBlank() ->
+                errores.add("No se detectó la placa del vehículo.")
+            !isValidPeruPlate(placaParsed) ->
+                errores.add(
+                    "La placa detectada ($placaParsed) no cumple el formato esperado: " +
+                        "1 letra, 2 caracteres alfanuméricos y 3 números."
+                )
         }
 
-        // 4. Parser de Vía
         val viaParsed = parseVia(viaWords, clean)
-        if (viaParsed == null || viaParsed <= 0) {
-            errores.add("No se detectó un número de vía válido. Por favor especificar la vía.")
+        when {
+            viaStart < 0 ->
+                errores.add("No se detectó la palabra VÍA.")
+            viaParsed == null || viaParsed <= 0 ->
+                errores.add("No se detectó un número de vía válido.")
+            allowedVias.isNotEmpty() && viaParsed !in allowedVias ->
+                errores.add(
+                    "La vía $viaParsed no está habilitada para esta plaza. " +
+                        "Permitidas: ${allowedVias.sorted().joinToString(", ")}."
+                )
         }
-
-        val esValido = errores.isEmpty()
 
         return ParsedCommand(
             placa = placaParsed,
             via = viaParsed,
             accion = accion,
             textoOriginal = rawText,
-            valido = esValido,
-            errores = errores,
-            advertencias = advertencias
+            valido = errores.isEmpty(),
+            errores = errores.distinct(),
+            advertencias = advertencias.distinct()
         )
     }
 
-    private fun parseVia(viaSnippet: String, fullCleanText: String): Int? {
-        val target = if (viaSnippet.isNotBlank()) viaSnippet else {
-            val direct = Regex("(?:via|carril|numero)\\s+(\\d+)", RegexOption.IGNORE_CASE)
-                .find(fullCleanText)
-            if (direct != null) return direct.groupValues[1].toIntOrNull()
+    /**
+     * Fusiona una corrección corta con el resultado anterior.
+     * Permite decir únicamente "placa ...", "vía ..." o "derivado/fuga"
+     * sin repetir todo el comando.
+     */
+    fun mergeCorrection(
+        previous: ParsedCommand,
+        rawCorrection: String,
+        allowedVias: Set<Int> = emptySet()
+    ): ParsedCommand {
+        val clean = normalize(rawCorrection)
+        val fresh = parse(rawCorrection, allowedVias)
+
+        val hasAction = actionDetected(clean)
+        val hasVia = viaMarkerPosition(clean).first >= 0
+        val hasPlate = plateMarkerPosition(clean).first >= 0
+
+        val mergedAction = if (hasAction) fresh.accion else previous.accion
+        val mergedVia = if (hasVia) fresh.via else previous.via
+        val mergedPlate = if (hasPlate) fresh.placa else previous.placa
+
+        val errores = mutableListOf<String>()
+
+        if (mergedAction !in setOf("FUGA", "DERIVADO")) {
+            errores.add("No se detectó una acción válida.")
+        }
+
+        if (mergedVia == null || mergedVia <= 0) {
+            errores.add("No se detectó una vía válida.")
+        } else if (allowedVias.isNotEmpty() && mergedVia !in allowedVias) {
+            errores.add(
+                "La vía $mergedVia no está habilitada para esta plaza. " +
+                    "Permitidas: ${allowedVias.sorted().joinToString(", ")}."
+            )
+        }
+
+        if (!isValidPeruPlate(mergedPlate)) {
+            errores.add("La placa no cumple el formato esperado.")
+        }
+
+        val original = listOf(previous.textoOriginal, rawCorrection)
+            .filter { it.isNotBlank() }
+            .joinToString(" | corrección: ")
+
+        return ParsedCommand(
+            placa = mergedPlate,
+            via = mergedVia,
+            accion = mergedAction,
+            textoOriginal = original,
+            valido = errores.isEmpty(),
+            errores = errores,
+            advertencias = emptyList()
+        )
+    }
+
+    private fun parseVia(
+        viaSnippet: String,
+        fullCleanText: String
+    ): Int? {
+        val target = if (viaSnippet.isNotBlank()) {
+            viaSnippet
+        } else {
+            val direct = Regex(
+                "(?:via|carril|numero)\\s+(\\d+)",
+                RegexOption.IGNORE_CASE
+            ).find(fullCleanText)
+
+            if (direct != null) {
+                return direct.groupValues[1].toIntOrNull()
+            }
             ""
         }
 
-        // Leer únicamente el bloque numérico inicial. Admite una mezcla de
-        // dígitos escritos por Android y código Q:
-        // "1 negativo 1" -> 101
-        // "primero 0 primero" -> 101
-        // "primero negativo primero" -> 101
         val numberTokens = mutableListOf<String>()
         var numberStarted = false
 
@@ -362,7 +508,7 @@ object AviParser {
             val isDirectDigits = token.all { it.isDigit() }
             val isNumberWord =
                 singleDigits.containsKey(token) ||
-                spanishNumbers.containsKey(token)
+                    spanishNumbers.containsKey(token)
 
             when {
                 isDirectDigits || isNumberWord -> {
@@ -382,7 +528,6 @@ object AviParser {
 
         if (tokens.isEmpty()) return null
 
-        // Si todos son dígitos individuales/código Q, concatenarlos.
         val areAllDigitLike = tokens.all { token ->
             token.all { it.isDigit() } || singleDigits.containsKey(token)
         }
@@ -402,13 +547,15 @@ object AviParser {
             return digitString.toIntOrNull()
         }
 
-        // Números compuestos tradicionales: "ciento cincuenta y uno" -> 151.
         val compuesto = convertWordsToNumber(numberTokens.joinToString(" "))
         return if (compuesto > 0) compuesto else null
     }
 
     private fun convertWordsToNumber(phrase: String): Int {
-        val tokens = phrase.split(" ").filter { it.isNotBlank() && it != "y" }
+        val tokens = phrase
+            .split(" ")
+            .filter { it.isNotBlank() && it != "y" }
+
         var current = 0
         var total = 0
 
@@ -422,41 +569,19 @@ object AviParser {
                 value == 100 -> {
                     current = if (current == 0) 100 else current + 100
                 }
-                value >= 100 -> {
-                    current += value
-                }
-                else -> {
-                    current += value
-                }
+                value >= 100 -> current += value
+                else -> current += value
             }
         }
+
         total += current
         return total
     }
 
-    fun isValidPeruPlate(placa: String): Boolean {
-        return placa.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))
-    }
-
-    /**
-     * Construye la placa en el mismo orden en que fue dictada.
-     *
-     * Formato operativo esperado para vehículos:
-     * - posición 1: letra
-     * - posiciones 2 y 3: letra o número
-     * - posiciones 4, 5 y 6: número
-     *
-     * Ejemplos válidos:
-     * ABC123
-     * A1B234
-     * A12234
-     */
     private fun parsePlaca(placaSnippet: String): String {
         val target = placaSnippet.trim()
         if (target.isBlank()) return ""
 
-        // Caso 1: SpeechRecognizer ya devolvió la placa prácticamente completa.
-        // Admite ABC123, ABC-123, A1B234, A1B-234, A12 345, etc.
         val compactCandidate = target
             .uppercase(Locale.ROOT)
             .replace("-", "")
@@ -467,7 +592,6 @@ object AviParser {
             ?.value
             ?.let { return it }
 
-        // Caso 2: construir secuencialmente desde alfabeto fonético + código Q.
         val plateBuilder = StringBuilder()
 
         val tokens = target
@@ -482,7 +606,6 @@ object AviParser {
         for (token in tokens) {
             if (plateBuilder.length >= 6) break
 
-            // Android puede devolver bloques numéricos completos, ej. "234".
             if (token.all { it.isDigit() }) {
                 for (digit in token) {
                     if (plateBuilder.length >= 6) break
@@ -491,28 +614,23 @@ object AviParser {
                 continue
             }
 
-            // Código Q o número convencional.
             val mappedDigit = singleDigits[token]
             if (mappedDigit != null) {
                 plateBuilder.append(mappedDigit)
                 continue
             }
 
-            // Letra fonética OTAN / variantes.
             val mappedLetter = phoneticAlphabet[token]
             if (mappedLetter != null) {
                 plateBuilder.append(mappedLetter)
                 continue
             }
 
-            // Letra directa reconocida por Android.
             if (token.length == 1 && token[0].isLetter()) {
                 plateBuilder.append(token.uppercase(Locale.ROOT))
                 continue
             }
 
-            // Fragmento alfanumérico corto que Android pueda devolver unido,
-            // por ejemplo "A1B" o "B2".
             if (
                 token.length in 2..6 &&
                 token.all { it.isLetterOrDigit() } &&
@@ -526,10 +644,6 @@ object AviParser {
             }
         }
 
-        val candidate = plateBuilder.toString()
-
-        // Solo devolvemos hasta seis posiciones; la validación superior decide
-        // si la estructura completa es válida.
-        return candidate.take(6)
+        return plateBuilder.toString().take(6)
     }
 }
