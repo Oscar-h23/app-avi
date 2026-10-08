@@ -183,7 +183,11 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 _voiceState.value = _voiceState.value.copy(
                     isListening = true,
                     stage = DiagnosticStage.STAGE_1,
-                    stageDescription = "1/4 Diga: acción, vía y placa.",
+                    stageDescription = if (enhancedAudioActive) {
+                        "1/4 Reducción de ruido activa. Diga: acción, vía y placa."
+                    } else {
+                        "1/4 Diga: acción, vía y placa."
+                    },
                     errorMessage = null
                 )
             }
