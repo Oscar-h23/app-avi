@@ -73,7 +73,9 @@ interface SigoApiService {
     ): Response<List<RegistroSigoResponse>>
 
     companion object {
-        const val DEFAULT_BASE_URL = "http://172.20.10.8:8080/"
+        const val PRODUCTION_BASE_URL = "https://sigo-back-production-70c2.up.railway.app/"
+        const val DEFAULT_BASE_URL = PRODUCTION_BASE_URL
+        const val LOCAL_MAC_BASE_URL = "http://172.20.10.8:8080/"
         const val EMULATOR_BASE_URL = "http://10.0.2.2:8080/"
 
         val defaultMoshi: Moshi = Moshi.Builder()
@@ -103,9 +105,9 @@ interface SigoApiService {
             }
 
             val okHttpClient = OkHttpClient.Builder()
-                .connectTimeout(5, TimeUnit.SECONDS)
-                .readTimeout(8, TimeUnit.SECONDS)
-                .writeTimeout(8, TimeUnit.SECONDS)
+                .connectTimeout(15, TimeUnit.SECONDS)
+                .readTimeout(20, TimeUnit.SECONDS)
+                .writeTimeout(20, TimeUnit.SECONDS)
                 .addInterceptor(authInterceptor)
                 .addInterceptor(loggingInterceptor)
                 .build()
