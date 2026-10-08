@@ -308,6 +308,21 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         }
     }
 
+    private fun speechErrorName(errorCode: Int): String {
+        return when (errorCode) {
+            SpeechRecognizer.ERROR_AUDIO -> "AUDIO"
+            SpeechRecognizer.ERROR_CLIENT -> "CLIENT"
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "PERMISSIONS"
+            SpeechRecognizer.ERROR_NETWORK -> "NETWORK"
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "NETWORK_TIMEOUT"
+            SpeechRecognizer.ERROR_NO_MATCH -> "NO_MATCH"
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "RECOGNIZER_BUSY"
+            SpeechRecognizer.ERROR_SERVER -> "SERVER"
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "SPEECH_TIMEOUT"
+            else -> "CODE_$errorCode"
+        }
+    }
+
     private fun handleSpeechError(errorCode: Int) {
         val wasEnhanced = enhancedAudioActive
         cleanupEnhancedAudio()
@@ -320,14 +335,19 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             !enhancedFallbackAttempted &&
             errorCode in setOf(
                 SpeechRecognizer.ERROR_AUDIO,
-                SpeechRecognizer.ERROR_CLIENT
+                SpeechRecognizer.ERROR_CLIENT,
+                SpeechRecognizer.ERROR_NO_MATCH,
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
+                SpeechRecognizer.ERROR_SERVER,
+                SpeechRecognizer.ERROR_NETWORK,
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT
             )
         ) {
             enhancedFallbackAttempted = true
 
             _voiceState.value = _voiceState.value.copy(
                 isListening = false,
-                stageDescription = "El dispositivo no aceptó audio procesado. Usando modo compatible...",
+                stageDescription = "Probando micrófono estándar para asegurar compatibilidad...",
                 errorMessage = null
             )
 
@@ -363,13 +383,14 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 errorMessage = message
             )
             mainHandler.postDelayed({
-                startListeningInternal(preferEnhancedAudio = !enhancedFallbackAttempted)
+                startListeningInternal(preferEnhancedAudio = false)
             }, 300)
         } else {
+            val errorName = speechErrorName(errorCode)
             _voiceState.value = _voiceState.value.copy(
                 isListening = false,
-                stageDescription = "Sin reconocimiento activo.",
-                errorMessage = message
+                stageDescription = "Reconocimiento detenido ($errorName). Pulsa el micrófono para intentar nuevamente.",
+                errorMessage = "$message [$errorName]"
             )
         }
     }
