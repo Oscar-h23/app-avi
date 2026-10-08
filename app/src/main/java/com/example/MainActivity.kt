@@ -480,7 +480,12 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
     val usuario = repository.getUsuarioActual()
     val connectionState by repository.connectionState.collectAsState()
     val pendientesCount by repository.pendientesCountFlow.collectAsState(initial = 0)
+    val allowedVias by repository.allowedVias.collectAsState()
     val speechManager = remember { AviSpeechManager.getInstance(context) }
+
+    LaunchedEffect(allowedVias) {
+        speechManager.setAllowedVias(allowedVias)
+    }
 
     var currentTab by remember { mutableStateOf(AviNavigationTab.INICIO) }
 
@@ -668,13 +673,20 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         pendientesCount = pendientesCount,
                         onIniciarHablar = {
                             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
+                            currentParsedCommand = ParsedCommand(
+                                placa = "",
+                                via = null,
+                                accion = "FUGA",
+                                textoOriginal = "",
+                                valido = false
+                            )
                             currentTab = AviNavigationTab.DICTADO
                         },
                         onRegistroManual = {
                             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
                             currentParsedCommand = ParsedCommand(
                                 placa = "",
-                                via = 101,
+                                via = null,
                                 accion = "FUGA",
                                 textoOriginal = "Ingreso manual desde panel",
                                 valido = false
@@ -683,7 +695,7 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         },
                         onSimularFrase = { frase ->
                             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
-                            val parsed = AviParser.parse(frase)
+                            val parsed = AviParser.parse(frase, allowedVias)
                             currentParsedCommand = parsed
                             currentTab = AviNavigationTab.REVISION
                         }
@@ -694,7 +706,19 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                     PantallaEscucha(
                         speechManager = speechManager,
                         onTextoFinalizado = { textoReconocido ->
-                            val parsed = AviParser.parse(textoReconocido)
+                            val parsed = if (
+                                currentParsedCommand.textoOriginal.isNotBlank() &&
+                                !currentParsedCommand.valido
+                            ) {
+                                AviParser.mergeCorrection(
+                                    previous = currentParsedCommand,
+                                    rawCorrection = textoReconocido,
+                                    allowedVias = allowedVias
+                                )
+                            } else {
+                                AviParser.parse(textoReconocido, allowedVias)
+                            }
+
                             currentParsedCommand = parsed
                             currentTab = AviNavigationTab.REVISION
                         },
@@ -1119,6 +1143,19 @@ fun PantallaEscucha(
             fontSize = 15.sp
         )
 
+        if (voiceState.stageDescription.isNotBlank()) {
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = voiceState.stageDescription,
+                fontSize = 12.sp,
+                color = if (voiceState.errorMessage == null)
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                else
+                    MaterialTheme.colorScheme.error,
+                textAlign = TextAlign.Center
+            )
+        }
+
         if (voiceState.recognizedText.isNotBlank()) {
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -1186,6 +1223,7 @@ fun PantallaConfirmacion(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val allowedVias by repository.allowedVias.collectAsState()
 
     var placaInput by remember { mutableStateOf(parsedCommand.placa) }
     var viaInput by remember { mutableStateOf(parsedCommand.via?.toString() ?: "") }
@@ -1248,6 +1286,36 @@ fun PantallaConfirmacion(
         }
 
         Spacer(modifier = Modifier.height(16.dp))
+
+        if (!parsedCommand.valido && parsedCommand.errores.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF7E6))
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        text = "AVIX necesita una corrección",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp,
+                        color = Color(0xFF9A6700)
+                    )
+                    parsedCommand.errores.take(2).forEach { error ->
+                        Text(
+                            text = "• $error",
+                            fontSize = 11.sp,
+                            color = Color(0xFF7A5A00)
+                        )
+                    }
+                    Text(
+                        text = "Puedes corregir manualmente o pulsar “Corregir por voz” y repetir solo el dato faltante.",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
 
         // CAMPOS EDITABLES
         Card(
@@ -1353,6 +1421,15 @@ fun PantallaConfirmacion(
                         .fillMaxWidth()
                         .testTag("lane_input_field")
                 )
+
+                if (allowedVias.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = "Vías habilitadas: ${allowedVias.sorted().joinToString(", ")}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
 
@@ -1389,6 +1466,17 @@ fun PantallaConfirmacion(
                     errorMessage = "Ingrese un número de vía válido."
                     return@Button
                 }
+                if (!repository.isViaPermitida(viaNum)) {
+                    errorMessage = "La vía $viaNum no está habilitada para esta plaza."
+                    return@Button
+                }
+
+                AviSpeechManager.getInstance(context).recordManualCorrection(
+                    original = parsedCommand,
+                    finalPlate = placaInput,
+                    finalVia = viaNum,
+                    finalAction = accionInput
+                )
 
                 isSaving = true
                 errorMessage = null
@@ -1441,7 +1529,7 @@ fun PantallaConfirmacion(
             ) {
                 Icon(Icons.Default.Mic, contentDescription = null, modifier = Modifier.size(16.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Volver a Hablar")
+                Text("Corregir por voz")
             }
 
             OutlinedButton(
