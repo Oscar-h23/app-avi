@@ -7,36 +7,37 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 private val AviLightColorScheme = lightColorScheme(
-    primary = AviNavy,
+    primary = AviBlueMedium,
     onPrimary = Color.White,
-    primaryContainer = AviBlueAccent,
-    onPrimaryContainer = Color.White,
-    secondary = AviCyan,
-    onSecondary = Color(0xFF0D1B2A),
-    secondaryContainer = AviCyanLight,
-    onSecondaryContainer = Color(0xFF0D1B2A),
+    primaryContainer = AviCyanLight,
+    onPrimaryContainer = AviNavy,
+    secondary = AviBlueAccent,
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFEFF6FF),
+    onSecondaryContainer = AviNavy,
     background = AviBackgroundLight,
     onBackground = AviTextPrimary,
     surface = AviSurfaceLight,
     onSurface = AviTextPrimary,
     surfaceVariant = AviSurfaceVariant,
     onSurfaceVariant = AviTextSecondary,
+    outline = AviBorder,
     error = AviActionFuga,
     onError = Color.White
 )
 
 private val AviDarkColorScheme = darkColorScheme(
     primary = AviCyan,
-    onPrimary = Color(0xFF0D1B2A),
+    onPrimary = AviPrimaryDark,
     primaryContainer = AviBlueMedium,
     onPrimaryContainer = Color.White,
-    secondary = AviCyanLight,
-    onSecondary = Color(0xFF0D1B2A),
-    background = AviPrimaryDark,
+    secondary = Color(0xFF60A5FA),
+    onSecondary = AviPrimaryDark,
+    background = Color(0xFF07192D),
     onBackground = Color.White,
     surface = AviNavy,
     onSurface = Color.White,
-    surfaceVariant = Color(0xFF1E293B),
+    surfaceVariant = Color(0xFF16304E),
     onSurfaceVariant = Color(0xFFCBD5E1),
     error = Color(0xFFF87171),
     onError = Color.White
@@ -47,9 +48,8 @@ fun MyApplicationTheme(
     darkTheme: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) AviDarkColorScheme else AviLightColorScheme
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = if (darkTheme) AviDarkColorScheme else AviLightColorScheme,
         typography = Typography,
         content = content
     )
