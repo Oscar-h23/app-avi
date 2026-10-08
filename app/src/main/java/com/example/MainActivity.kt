@@ -61,6 +61,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Mic
@@ -79,6 +80,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -1232,6 +1235,7 @@ fun PantallaConfirmacion(
 
     var isSaving by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var viaMenuExpanded by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1409,23 +1413,104 @@ fun PantallaConfirmacion(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Campo VÍA
-                OutlinedTextField(
-                    value = viaInput,
-                    onValueChange = { if (it.all { ch -> ch.isDigit() }) viaInput = it },
-                    label = { Text("Número de Vía") },
-                    placeholder = { Text("Ej: 101") },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    singleLine = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("lane_input_field")
+                // VÍA: usar selector con el catálogo real de SIGO.
+                // Si el dispositivo está offline y no hay catálogo, permitir entrada manual.
+                Text(
+                    text = "Número de Vía",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
+                Spacer(modifier = Modifier.height(6.dp))
 
                 if (allowedVias.isNotEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = { viaMenuExpanded = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .testTag("lane_select"),
+                            shape = RoundedCornerShape(10.dp)
+                        ) {
+                            Text(
+                                text = viaInput.toIntOrNull()?.let { "Vía $it" }
+                                    ?: "Seleccionar vía",
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Start,
+                                fontWeight = if (viaInput.isBlank()) {
+                                    FontWeight.Normal
+                                } else {
+                                    FontWeight.SemiBold
+                                }
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = "Abrir selector de vía"
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = viaMenuExpanded,
+                            onDismissRequest = { viaMenuExpanded = false }
+                        ) {
+                            allowedVias.sorted().forEach { via ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            text = "Vía $via",
+                                            fontWeight = if (viaInput == via.toString()) {
+                                                FontWeight.Bold
+                                            } else {
+                                                FontWeight.Normal
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        if (viaInput == via.toString()) {
+                                            Icon(
+                                                Icons.Default.Check,
+                                                contentDescription = null,
+                                                tint = AviStatusOnline
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        viaInput = via.toString()
+                                        errorMessage = null
+                                        viaMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+
                     Spacer(modifier = Modifier.height(5.dp))
                     Text(
-                        text = "Vías habilitadas: ${allowedVias.sorted().joinToString(", ")}",
+                        text = "Vías habilitadas por SIGO: ${allowedVias.sorted().joinToString(", ")}",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = viaInput,
+                        onValueChange = {
+                            if (it.all { ch -> ch.isDigit() }) {
+                                viaInput = it
+                                errorMessage = null
+                            }
+                        },
+                        label = { Text("Vía") },
+                        placeholder = { Text("Ej: 101") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("lane_input_field")
+                    )
+
+                    Spacer(modifier = Modifier.height(5.dp))
+                    Text(
+                        text = "Sin catálogo de vías: entrada manual habilitada.",
                         fontSize = 10.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
