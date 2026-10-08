@@ -283,8 +283,12 @@ class IncidentRepository private constructor(context: Context) {
             val accionNormalizada = if (accion.equals("DERIVADO", ignoreCase = true)) "DERIVADO" else "FUGA"
 
             // Validaciones locales antes de registrar
-            if (placaNormalizada.isBlank()) {
-                return@withContext Result.failure(IllegalArgumentException("La placa no puede estar vacía."))
+            if (!placaNormalizada.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))) {
+                return@withContext Result.failure(
+                    IllegalArgumentException(
+                        "Formato de placa inválido. Se espera 1 letra, 2 caracteres alfanuméricos y 3 números."
+                    )
+                )
             }
             if (via == null || via <= 0) {
                 return@withContext Result.failure(IllegalArgumentException("La vía no puede estar vacía o ser menor a 1."))
