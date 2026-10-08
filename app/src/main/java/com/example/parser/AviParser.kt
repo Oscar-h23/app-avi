@@ -450,11 +450,30 @@ object AviParser {
 
         val errores = mutableListOf<String>()
 
-        if (mergedAction !in setOf("FUGA", "DERIVADO")) {
+        val previousActionValid = previous.errores.none {
+            it.contains("acción", ignoreCase = true) ||
+                it.contains("accion", ignoreCase = true)
+        }
+        val previousViaValid = previous.errores.none {
+            it.contains("vía", ignoreCase = true) ||
+                it.contains("via", ignoreCase = true)
+        }
+        val previousPlateValid = previous.errores.none {
+            it.contains("placa", ignoreCase = true)
+        }
+
+        if (
+            mergedAction !in setOf("FUGA", "DERIVADO") ||
+            (!hasAction && !previousActionValid)
+        ) {
             errores.add("No se detectó una acción válida.")
         }
 
-        if (mergedVia == null || mergedVia <= 0) {
+        if (
+            mergedVia == null ||
+            mergedVia <= 0 ||
+            (!hasVia && !previousViaValid)
+        ) {
             errores.add("No se detectó una vía válida.")
         } else if (allowedVias.isNotEmpty() && mergedVia !in allowedVias) {
             errores.add(
@@ -463,7 +482,10 @@ object AviParser {
             )
         }
 
-        if (!isValidPeruPlate(mergedPlate)) {
+        if (
+            !isValidPeruPlate(mergedPlate) ||
+            (!hasPlate && !previousPlateValid)
+        ) {
             errores.add("La placa no cumple el formato esperado.")
         }
 
