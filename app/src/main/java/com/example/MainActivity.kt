@@ -2044,8 +2044,9 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
 
                 Button(
                     onClick = {
-                        urlInput = SigoApiService.PRODUCTION_BASE_URL
-                        repository.updateConfig(urlInput)
+                        val productionUrl = SigoApiService.PRODUCTION_BASE_URL
+                        urlInput = productionUrl
+                        repository.updateConfig(productionUrl)
                         repository.verificarConexionSigo()
                     },
                     modifier = Modifier.fillMaxWidth(),
