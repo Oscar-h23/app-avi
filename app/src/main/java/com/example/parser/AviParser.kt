@@ -47,7 +47,7 @@ object AviParser {
         "uniform" to "U", "uniforme" to "U",
         "victor" to "V",
         "whiskey" to "W", "whisky" to "W", "wisky" to "W", "wiski" to "W",
-        "xray" to "X", "exray" to "X", "equisray" to "X", "ray" to "X", "equis" to "X",
+        "xray" to "X", "x ray" to "X", "exray" to "X", "equisray" to "X", "equis ray" to "X", "ray" to "X", "equis" to "X",
         "yankee" to "Y", "yanki" to "Y",
         "zulu" to "Z",
         "a" to "A",
@@ -625,31 +625,48 @@ object AviParser {
                     it != "menos"
             }
 
-        for (token in tokens) {
-            if (plateBuilder.length >= 6) break
+        var index = 0
+        while (index < tokens.size && plateBuilder.length < 6) {
+            val token = tokens[index]
+
+            // Primero intentar alias fonéticos de dos palabras:
+            // "ve grande", "doble ve", "i griega", "x ray", etc.
+            if (index + 1 < tokens.size) {
+                val pair = "$token ${tokens[index + 1]}"
+                val mappedPair = phoneticAlphabet[pair]
+                if (mappedPair != null) {
+                    plateBuilder.append(mappedPair)
+                    index += 2
+                    continue
+                }
+            }
 
             if (token.all { it.isDigit() }) {
                 for (digit in token) {
                     if (plateBuilder.length >= 6) break
                     plateBuilder.append(digit)
                 }
+                index++
                 continue
             }
 
             val mappedDigit = singleDigits[token]
             if (mappedDigit != null) {
                 plateBuilder.append(mappedDigit)
+                index++
                 continue
             }
 
             val mappedLetter = phoneticAlphabet[token]
             if (mappedLetter != null) {
                 plateBuilder.append(mappedLetter)
+                index++
                 continue
             }
 
             if (token.length == 1 && token[0].isLetter()) {
                 plateBuilder.append(token.uppercase(Locale.ROOT))
+                index++
                 continue
             }
 
@@ -664,6 +681,8 @@ object AviParser {
                     }
                 }
             }
+
+            index++
         }
 
         return plateBuilder.toString().take(6)
