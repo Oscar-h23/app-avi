@@ -293,6 +293,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
 
     private fun handleSpeechError(errorCode: Int) {
         if (errorCode != SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+            incrementMetric(KEY_ATTEMPTS)
             incrementMetric(KEY_INVALID_RESULTS)
         }
 
