@@ -2,24 +2,25 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Paleta Oficial AVI: Azul Oscuro, Azul Claro, Blanco y Acentos Operativos
-val AviPrimaryDark = Color(0xFF0D1B2A)
-val AviNavy = Color(0xFF1B263B)
-val AviBlueMedium = Color(0xFF415A77)
-val AviBlueAccent = Color(0xFF0077B6)
-val AviCyan = Color(0xFF00B4D8)
-val AviCyanLight = Color(0xFF90E0EF)
+// Paleta AVIX alineada al diseño visual de SIGO Web.
+val AviPrimaryDark = Color(0xFF0B2342)
+val AviNavy = Color(0xFF0B2342)
+val AviBlueMedium = Color(0xFF0B5CAB)
+val AviBlueAccent = Color(0xFF2563EB)
+val AviCyan = Color(0xFF1688E8)
+val AviCyanLight = Color(0xFFEAF3FC)
 
-val AviBackgroundLight = Color(0xFFF8F9FA)
+val AviBackgroundLight = Color(0xFFF8FAFC)
 val AviSurfaceLight = Color(0xFFFFFFFF)
-val AviSurfaceVariant = Color(0xFFE2E8F0)
+val AviSurfaceVariant = Color(0xFFF1F5F9)
+val AviBorder = Color(0xFFDFE5EE)
 
-val AviTextPrimary = Color(0xFF0F172A)
-val AviTextSecondary = Color(0xFF475569)
+val AviTextPrimary = Color(0xFF132033)
+val AviTextSecondary = Color(0xFF64748B)
 
 // Estados operativos
 val AviStatusOnline = Color(0xFF059669)
-val AviStatusOffline = Color(0xFFDC2626)
+val AviStatusOffline = Color(0xFFD64545)
 val AviStatusPending = Color(0xFFD97706)
-val AviActionFuga = Color(0xFFDC2626)
+val AviActionFuga = Color(0xFFD64545)
 val AviActionDerivado = Color(0xFF2563EB)
