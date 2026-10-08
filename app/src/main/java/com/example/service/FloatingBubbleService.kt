@@ -86,6 +86,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.MainActivity
 import com.example.data.IncidentRepository
+import com.example.model.ParsedCommand
 import com.example.parser.AviParser
 import com.example.util.AviDateUtils
 import com.example.voice.AviSpeechManager
@@ -330,7 +331,13 @@ fun FloatingOverlayContent(
     val expanded by isExpandedFlow.collectAsState()
     val isInDismissZone by isInDismissZoneFlow.collectAsState()
     val voiceState by speechManager.voiceState.collectAsState()
+    val allowedVias by repository.allowedVias.collectAsState()
     val scope = rememberCoroutineScope()
+
+    DisposableEffect(allowedVias) {
+        speechManager.setAllowedVias(allowedVias)
+        onDispose { }
+    }
 
     var accionInput by remember { mutableStateOf("") }
     var viaInput by remember { mutableStateOf("") }
@@ -338,19 +345,53 @@ fun FloatingOverlayContent(
     var textoOriginalInput by remember { mutableStateOf("") }
     var fechaHoraEventoCapturada by remember { mutableStateOf(AviDateUtils.nowLimaIso()) }
     var mensajeRegistro by remember { mutableStateOf<String?>(null) }
+    var mensajeVoz by remember { mutableStateOf<String?>(null) }
+    var lastParsedCommand by remember {
+        mutableStateOf(
+            ParsedCommand(
+                placa = "",
+                via = null,
+                accion = "FUGA",
+                textoOriginal = "",
+                valido = false
+            )
+        )
+    }
 
-    // Conectar el resultado de voz con los campos
-    DisposableEffect(speechManager) {
+    // Conectar el resultado de voz con los campos.
+    // Si el primer intento quedó incompleto, el siguiente dictado puede corregir
+    // solo acción, vía o placa sin perder los datos ya reconocidos.
+    DisposableEffect(speechManager, allowedVias) {
         val listener: (String) -> Unit = { textoReconocido ->
             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
-            val parsed = AviParser.parse(textoReconocido)
+
+            val parsed = if (
+                lastParsedCommand.textoOriginal.isNotBlank() &&
+                !lastParsedCommand.valido
+            ) {
+                AviParser.mergeCorrection(
+                    previous = lastParsedCommand,
+                    rawCorrection = textoReconocido,
+                    allowedVias = allowedVias
+                )
+            } else {
+                AviParser.parse(textoReconocido, allowedVias)
+            }
+
+            lastParsedCommand = parsed
             accionInput = parsed.accion
             viaInput = parsed.via?.toString() ?: ""
-            // No conservar una placa anterior: solo mostrar la placa detectada
-            // después de que el dictado contenga explícitamente la palabra "placa".
             placaInput = parsed.placa
-            textoOriginalInput = textoReconocido
+            textoOriginalInput = parsed.textoOriginal
+
+            mensajeVoz = if (parsed.valido) {
+                null
+            } else {
+                parsed.errores.firstOrNull()
+                    ?: "Repita únicamente el dato que falta."
+            }
         }
+
         speechManager.addResultListener(listener)
         onDispose {
             speechManager.removeResultListener(listener)
@@ -609,6 +650,15 @@ fun FloatingOverlayContent(
                     )
                 }
 
+                if (allowedVias.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Vías: ${allowedVias.sorted().joinToString(", ")}",
+                        fontSize = 9.sp,
+                        color = Color(0xFF64748B)
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = "Hora evento (Lima): ${AviDateUtils.formatIsoToDisplay(fechaHoraEventoCapturada)}",
@@ -623,6 +673,16 @@ fun FloatingOverlayContent(
                         color = Color(0xFF64748B),
                         fontSize = 11.sp,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
+                    )
+                }
+
+                if (mensajeVoz != null) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "⚠ $mensajeVoz",
+                        color = Color(0xFFD64545),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
 
@@ -642,24 +702,48 @@ fun FloatingOverlayContent(
                 Button(
                     onClick = {
                         val viaNum = viaInput.toIntOrNull()
+
+                        speechManager.recordManualCorrection(
+                            original = lastParsedCommand,
+                            finalPlate = placaInput,
+                            finalVia = viaNum,
+                            finalAction = accionInput
+                        )
+
                         scope.launch {
-                            repository.registrarIncidencia(
+                            val result = repository.registrarIncidencia(
                                 placa = placaInput.uppercase(),
                                 via = viaNum,
                                 accion = accionInput,
                                 fechaHoraEvento = fechaHoraEventoCapturada,
                                 textoReconocido = textoOriginalInput
                             )
-                            mensajeRegistro = "✓ Registrado y enviado a SIGO"
-                            kotlinx.coroutines.delay(1200)
-                            mensajeRegistro = null
-                            onExpandToggle() // Minimiza la burbuja automáticamente
+
+                            if (result.isSuccess) {
+                                mensajeVoz = null
+                                mensajeRegistro = "✓ Registrado y enviado a SIGO"
+                                kotlinx.coroutines.delay(1200)
+                                mensajeRegistro = null
+
+                                // Limpiar contexto para que el siguiente vehículo empiece desde cero.
+                                lastParsedCommand = ParsedCommand()
+                                accionInput = ""
+                                viaInput = ""
+                                placaInput = ""
+                                textoOriginalInput = ""
+
+                                onExpandToggle()
+                            } else {
+                                mensajeRegistro = null
+                                mensajeVoz = result.exceptionOrNull()?.message
+                                    ?: "No se pudo registrar el evento."
+                            }
                         }
                     },
                     enabled = AviParser.isValidPeruPlate(
                             placaInput.uppercase().replace(" ", "").replace("-", "")
                         ) &&
-                            viaInput.toIntOrNull() != null &&
+                            viaInput.toIntOrNull()?.let { repository.isViaPermitida(it) } == true &&
                             accionInput in listOf("FUGA", "DERIVADO"),
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
