@@ -403,14 +403,16 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     }
 
     fun startListening() {
-        // Una pulsación del usuario inicia una sesión completamente nueva.
+        // En operación prima la velocidad: el primer toque usa directamente
+        // el SpeechRecognizer estándar, que es el modo más compatible del dispositivo.
+        // La capa contextual de AVIX sigue activa: biasing, ranking, parser y autocorrección.
         enhancedFallbackAttempted = false
         _voiceState.value = _voiceState.value.copy(
             retryCount = 0,
             errorMessage = null,
             recognizedText = ""
         )
-        startListeningInternal(preferEnhancedAudio = true)
+        startListeningInternal(preferEnhancedAudio = false)
     }
 
     private fun startListeningInternal(
@@ -435,8 +437,14 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             try {
                 cleanupEnhancedAudio()
 
-                // Cancelar cualquier sesión previa para limpiar buffers.
-                speechRecognizer?.cancel()
+                // Cancelar únicamente si había una captura realmente activa.
+                // Evita que un callback tardío de cancel() interfiera con el nuevo intento.
+                if (_voiceState.value.isListening) {
+                    try {
+                        speechRecognizer?.cancel()
+                    } catch (_: Exception) {
+                    }
+                }
 
                 if (speechRecognizer == null) {
                     initRecognizer()
@@ -523,7 +531,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                         "Captura reforzada para voz activa."
                     }
                 } else {
-                    "Captura estándar del dispositivo."
+                    "Captura rápida activa."
                 }
 
                 _voiceState.value = _voiceState.value.copy(
