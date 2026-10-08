@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.AudioFormat
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -58,6 +59,11 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     )
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private val noiseReducedAudioSource = NoiseReducedAudioSource()
+    private var enhancedAudioActive = false
+    private var enhancedFallbackAttempted = false
+    private var captureTimeoutRunnable: Runnable? = null
+
     var isRecognizerAvailable = false
         private set
 
@@ -207,6 +213,10 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             override fun onBufferReceived(buffer: ByteArray?) {}
 
             override fun onEndOfSpeech() {
+                if (enhancedAudioActive) {
+                    noiseReducedAudioSource.finishInput()
+                }
+
                 _voiceState.value = _voiceState.value.copy(
                     isListening = false,
                     stageDescription = "Procesando audio recibido..."
@@ -218,6 +228,8 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             }
 
             override fun onResults(results: Bundle?) {
+                cleanupEnhancedAudio()
+
                 val matches = results
                     ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
                     ?.filter { it.isNotBlank() }
@@ -293,6 +305,34 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     }
 
     private fun handleSpeechError(errorCode: Int) {
+        val wasEnhanced = enhancedAudioActive
+        cleanupEnhancedAudio()
+
+        // Algunos RecognitionService no admiten EXTRA_AUDIO_SOURCE. Si el modo
+        // reforzado provoca un error de captura/cliente, volver automáticamente
+        // al micrófono administrado por SpeechRecognizer.
+        if (
+            wasEnhanced &&
+            !enhancedFallbackAttempted &&
+            errorCode in setOf(
+                SpeechRecognizer.ERROR_AUDIO,
+                SpeechRecognizer.ERROR_CLIENT
+            )
+        ) {
+            enhancedFallbackAttempted = true
+
+            _voiceState.value = _voiceState.value.copy(
+                isListening = false,
+                stageDescription = "El dispositivo no aceptó audio procesado. Usando modo compatible...",
+                errorMessage = null
+            )
+
+            mainHandler.postDelayed({
+                startListeningInternal(preferEnhancedAudio = false)
+            }, 250)
+            return
+        }
+
         if (errorCode != SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
             incrementMetric(KEY_ATTEMPTS)
             incrementMetric(KEY_INVALID_RESULTS)
@@ -319,7 +359,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 errorMessage = message
             )
             mainHandler.postDelayed({
-                startListening()
+                startListeningInternal(preferEnhancedAudio = !enhancedFallbackAttempted)
             }, 300)
         } else {
             _voiceState.value = _voiceState.value.copy(
@@ -330,11 +370,29 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         }
     }
 
+    private fun cleanupEnhancedAudio() {
+        captureTimeoutRunnable?.let { mainHandler.removeCallbacks(it) }
+        captureTimeoutRunnable = null
+        noiseReducedAudioSource.release()
+        enhancedAudioActive = false
+    }
+
     fun startListening() {
+        enhancedFallbackAttempted = false
+        startListeningInternal(preferEnhancedAudio = true)
+    }
+
+    private fun startListeningInternal(
+        preferEnhancedAudio: Boolean
+    ) {
         simulationJob?.cancel()
 
-        // Verificar permisos en tiempo de ejecución
-        if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+        if (
+            ContextCompat.checkSelfPermission(
+                appContext,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
             _voiceState.value = _voiceState.value.copy(
                 isListening = false,
                 errorMessage = "Permiso de micrófono (RECORD_AUDIO) no otorgado."
@@ -344,23 +402,40 @@ class AviSpeechManager private constructor(private val appContext: Context) {
 
         mainHandler.post {
             try {
-                // Cancelar cualquier sesión previa para limpiar buffers
+                cleanupEnhancedAudio()
+
+                // Cancelar cualquier sesión previa para limpiar buffers.
                 speechRecognizer?.cancel()
 
                 if (speechRecognizer == null) {
                     initRecognizer()
                 }
 
+                val enhancedSession = if (
+                    preferEnhancedAudio &&
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                ) {
+                    noiseReducedAudioSource.start()
+                } else {
+                    null
+                }
+
+                enhancedAudioActive = enhancedSession != null
+
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(
+                        RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                        RecognizerIntent.LANGUAGE_MODEL_FREE_FORM
+                    )
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE, "es-PE")
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-PE")
-                    putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "es-PE")
+                    putExtra(
+                        RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE,
+                        "es-PE"
+                    )
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
 
-                    // Desde Android 13, sesgar el reconocedor hacia el vocabulario
-                    // operativo real de AVIX antes de que entregue las hipótesis.
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         putStringArrayListExtra(
                             RecognizerIntent.EXTRA_BIASING_STRINGS,
@@ -370,11 +445,27 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                                 )
                             )
                         )
+
+                        enhancedSession?.let { session ->
+                            putExtra(
+                                RecognizerIntent.EXTRA_AUDIO_SOURCE,
+                                session.readDescriptor
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_AUDIO_SOURCE_CHANNEL_COUNT,
+                                session.channelCount
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_AUDIO_SOURCE_ENCODING,
+                                AudioFormat.ENCODING_PCM_16BIT
+                            )
+                            putExtra(
+                                RecognizerIntent.EXTRA_AUDIO_SOURCE_SAMPLING_RATE,
+                                session.sampleRate
+                            )
+                        }
                     }
 
-                    // Dar margen a pausas naturales entre acción, vía y placa.
-                    // Algunos motores pueden ignorar estos extras, pero los que los
-                    // soportan evitarán cortar el dictado demasiado pronto.
                     putExtra(
                         RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
                         1200L
@@ -388,20 +479,46 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                         1100L
                     )
 
-                    putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, appContext.packageName)
+                    putExtra(
+                        RecognizerIntent.EXTRA_CALLING_PACKAGE,
+                        appContext.packageName
+                    )
+                }
+
+                val audioModeText = if (enhancedSession != null) {
+                    if (enhancedSession.noiseSuppressorEnabled) {
+                        "Captura reforzada + reducción de ruido activa."
+                    } else {
+                        "Captura reforzada para voz activa."
+                    }
+                } else {
+                    "Captura estándar del dispositivo."
                 }
 
                 _voiceState.value = _voiceState.value.copy(
                     isListening = true,
                     stage = DiagnosticStage.STAGE_1,
-                    stageDescription = "1/4 Escuchando: acción, vía y placa...",
+                    stageDescription = "1/4 $audioModeText Diga: acción, vía y placa.",
                     recognizedText = "",
                     rmsLevel = 0f,
                     errorMessage = null
                 )
 
                 speechRecognizer?.startListening(intent)
+
+                // Límite de seguridad. Cerrar el pipe evita sesiones colgadas en
+                // implementaciones que esperan EOF del EXTRA_AUDIO_SOURCE.
+                if (enhancedSession != null) {
+                    val timeout = Runnable {
+                        if (enhancedAudioActive) {
+                            noiseReducedAudioSource.finishInput()
+                        }
+                    }
+                    captureTimeoutRunnable = timeout
+                    mainHandler.postDelayed(timeout, ENHANCED_AUDIO_MAX_DURATION_MS)
+                }
             } catch (e: Exception) {
+                cleanupEnhancedAudio()
                 _voiceState.value = _voiceState.value.copy(
                     isListening = false,
                     errorMessage = "Error al iniciar escucha: ${e.localizedMessage}"
@@ -413,9 +530,15 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     fun stopListening() {
         simulationJob?.cancel()
         mainHandler.post {
+            if (enhancedAudioActive) {
+                noiseReducedAudioSource.finishInput()
+            }
+
             try {
                 speechRecognizer?.stopListening()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
+
             _voiceState.value = _voiceState.value.copy(isListening = false)
         }
     }
@@ -460,9 +583,11 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     fun destroy() {
         simulationJob?.cancel()
         mainHandler.post {
+            cleanupEnhancedAudio()
             try {
                 speechRecognizer?.destroy()
-            } catch (_: Exception) {}
+            } catch (_: Exception) {
+            }
             speechRecognizer = null
         }
     }
@@ -479,6 +604,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         private const val KEY_PLATE_CORRECTIONS = "plate_corrections"
         private const val KEY_VIA_CORRECTIONS = "via_corrections"
         private const val KEY_ACTION_CORRECTIONS = "action_corrections"
+        private const val ENHANCED_AUDIO_MAX_DURATION_MS = 8_000L
 
         @Volatile
         private var instance: AviSpeechManager? = null
