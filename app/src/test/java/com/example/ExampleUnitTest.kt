@@ -312,6 +312,62 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testPlacaPeruLetraNumeroLetraConCodigoQ() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Alfa primero Bravo segundo tercero cuarto"
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("A1B234", result.placa)
+        assertEquals("FUGA", result.accion)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaPeruTresLetrasSigueSiendoValida() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertEquals("BTL245", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaPeruConSegundoYTercerCaracterNumericos() {
+        val result = AviParser.parse(
+            "Derivado vía primero negativo segundo placa Alfa primero segundo tercero cuarto quinto"
+        )
+
+        assertEquals(102, result.via)
+        assertEquals("A12345", result.placa)
+        assertEquals("DERIVADO", result.accion)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaPeruCompactaA1B234() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa A1B234"
+        )
+
+        assertEquals("A1B234", result.placa)
+        assertEquals(101, result.via)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaInvalidaSiPrimeraPosicionEsNumero() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa primero Alfa Bravo segundo tercero cuarto"
+        )
+
+        assertEquals("1AB234", result.placa)
+        assertFalse(result.valido)
+        assertTrue(result.errores.any { it.contains("formato esperado", ignoreCase = true) })
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
