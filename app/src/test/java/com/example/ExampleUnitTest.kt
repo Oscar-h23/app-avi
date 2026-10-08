@@ -6,6 +6,7 @@ import com.example.model.Incident
 import com.example.model.LoginRequest
 import com.example.model.LoginResponse
 import com.example.parser.AviParser
+import com.example.parser.AviCommandStage
 import com.example.util.AviDateUtils
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
@@ -365,6 +366,151 @@ class ExampleUnitTest {
         assertEquals("1AB234", result.placa)
         assertFalse(result.valido)
         assertTrue(result.errores.any { it.contains("formato esperado", ignoreCase = true) })
+    }
+
+    @Test
+    fun testMaquinaEstadosPideAccionPrimero() {
+        val analysis = AviParser.analyzeCommand(
+            "vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertEquals(AviCommandStage.ACCION, analysis.stage)
+        assertFalse(analysis.parsed.valido)
+    }
+
+    @Test
+    fun testMaquinaEstadosPideViaSiFaltaVia() {
+        val analysis = AviParser.analyzeCommand(
+            "Fuga placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertEquals(AviCommandStage.VIA, analysis.stage)
+        assertFalse(analysis.parsed.valido)
+    }
+
+    @Test
+    fun testMaquinaEstadosPidePlacaSiFaltaPlaca() {
+        val analysis = AviParser.analyzeCommand(
+            "Fuga vía primero negativo primero"
+        )
+
+        assertEquals(AviCommandStage.PLACA, analysis.stage)
+        assertFalse(analysis.parsed.valido)
+    }
+
+    @Test
+    fun testMaquinaEstadosCompletaComandoValido() {
+        val analysis = AviParser.analyzeCommand(
+            "Fuga vía primero negativo primero placa Alfa primero Bravo segundo tercero cuarto"
+        )
+
+        assertEquals(AviCommandStage.COMPLETO, analysis.stage)
+        assertTrue(analysis.parsed.valido)
+        assertEquals("A1B234", analysis.parsed.placa)
+        assertEquals(101, analysis.parsed.via)
+    }
+
+    @Test
+    fun testValidaCadaPosicionDePlacaPeruana() {
+        assertEquals(
+            listOf(true, true, true, true, true, true),
+            AviParser.platePositionValidity("A1B234")
+        )
+
+        assertEquals(
+            listOf(false, true, true, true, true, true),
+            AviParser.platePositionValidity("1AB234")
+        )
+
+        assertEquals(
+            listOf(true, true, true, false, true, true),
+            AviParser.platePositionValidity("A1BA34")
+        )
+    }
+
+    @Test
+    fun testViaFueraDeCatalogoRealSeRechaza() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo noveno placa Bravo Tango Lima segundo cuarto quinto",
+            allowedVias = setOf(101, 102, 103)
+        )
+
+        assertEquals(109, result.via)
+        assertFalse(result.valido)
+        assertTrue(result.errores.any { it.contains("habilitada", ignoreCase = true) })
+    }
+
+    @Test
+    fun testRankingPrefiereViaPermitida() {
+        val selected = AviParser.selectBestHypothesis(
+            candidates = listOf(
+                "Fuga vía primero negativo noveno placa Bravo Tango Lima segundo cuarto quinto",
+                "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto"
+            ),
+            confidenceScores = floatArrayOf(0.95f, 0.75f),
+            allowedVias = setOf(101, 102, 103)
+        )
+
+        assertEquals(
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto",
+            selected
+        )
+    }
+
+    @Test
+    fun testCorreccionParcialSoloPlacaConservaAccionYVia() {
+        val previous = AviParser.parse(
+            "Fuga vía primero negativo primero placa Bravo Tango"
+        )
+
+        val corrected = AviParser.mergeCorrection(
+            previous = previous,
+            rawCorrection = "placa Alfa primero Bravo segundo tercero cuarto"
+        )
+
+        assertEquals("FUGA", corrected.accion)
+        assertEquals(101, corrected.via)
+        assertEquals("A1B234", corrected.placa)
+        assertTrue(corrected.valido)
+    }
+
+    @Test
+    fun testCorreccionParcialSoloViaConservaPlaca() {
+        val previous = AviParser.parse(
+            "Derivado vía primero negativo noveno placa Bravo Tango Lima segundo cuarto quinto",
+            allowedVias = setOf(101, 102)
+        )
+
+        val corrected = AviParser.mergeCorrection(
+            previous = previous,
+            rawCorrection = "vía primero negativo segundo",
+            allowedVias = setOf(101, 102)
+        )
+
+        assertEquals("DERIVADO", corrected.accion)
+        assertEquals(102, corrected.via)
+        assertEquals("BTL245", corrected.placa)
+        assertTrue(corrected.valido)
+    }
+
+    @Test
+    fun testCorreccionDePlacaNoOcultaAccionQueFaltaba() {
+        val previous = AviParser.parse(
+            "vía primero negativo primero placa Bravo Tango"
+        )
+
+        val corrected = AviParser.mergeCorrection(
+            previous = previous,
+            rawCorrection = "placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertFalse(corrected.valido)
+        assertTrue(
+            corrected.errores.any {
+                it.contains("acción", ignoreCase = true) ||
+                    it.contains("accion", ignoreCase = true)
+            }
+        )
     }
 
     @Test
