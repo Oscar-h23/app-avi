@@ -24,3 +24,14 @@ data class UsuarioDto(
     val plazaId: Long? = null,
     val plaza: String? = null
 )
+
+
+@JsonClass(generateAdapter = true)
+data class ViaDto(
+    val id: Long? = null,
+    val plazaId: Long? = null,
+    val numero: Int,
+    val nombre: String? = null,
+    val activa: Boolean = true,
+    val orden: Int? = null
+)
