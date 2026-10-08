@@ -223,6 +223,72 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testCodigoQEnViaYPlaca() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("BTL245", result.placa)
+        assertEquals("FUGA", result.accion)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testCodigoQAceptaVariantesGramaticales() {
+        val result = AviParser.parse(
+            "Derivado vía primera negativo primera placa Alfa Bravo Charlie segunda cuarta quinta"
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("ABC245", result.placa)
+        assertEquals("DERIVADO", result.accion)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testCodigoQNegativoRepresentaCeroEnPlaca() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo segundo placa Alfa Bravo Charlie negativo primero noveno"
+        )
+
+        assertEquals(102, result.via)
+        assertEquals("ABC019", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testSeleccionaMejorHipotesisAunqueNoSeaLaPrimera() {
+        val candidates = listOf(
+            "Fuga vía primero negativo primero Bravo Tango Lima segundo cuarto quinto",
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto",
+            "Fuga vía primero negativo primero placa Bravo Tango"
+        )
+
+        val selected = AviParser.selectBestHypothesis(
+            candidates = candidates,
+            confidenceScores = floatArrayOf(0.92f, 0.80f, 0.95f)
+        )
+
+        assertEquals(
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto",
+            selected
+        )
+    }
+
+    @Test
+    fun testHipotesisConEstructuraCompletaTieneMayorPuntaje() {
+        val incompleta = AviParser.scoreCandidate(
+            "Fuga vía primero negativo primero Bravo Tango Lima segundo cuarto quinto"
+        )
+        val completa = AviParser.scoreCandidate(
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertTrue(completa > incompleta)
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
