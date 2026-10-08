@@ -150,6 +150,21 @@ object AviParser {
         if (Regex("\\b(via|carril|pista)\\b").containsMatchIn(clean)) score += 25
         if (Regex("\\bplaca\\b").containsMatchIn(clean)) score += 35
 
+        // El formato operativo recomendado es ACCIÓN -> VÍA -> PLACA.
+        val actionPositions = (aliasFuga + aliasDerivado)
+            .map { clean.indexOf(it) }
+            .filter { it >= 0 }
+        val actionPos = actionPositions.minOrNull() ?: -1
+        val viaPos = listOf("via ", "carril ", "pista ")
+            .map { clean.indexOf(it) }
+            .filter { it >= 0 }
+            .minOrNull() ?: -1
+        val placaPos = clean.indexOf("placa ")
+
+        if (actionPos >= 0 && viaPos > actionPos && placaPos > viaPos) {
+            score += 25
+        }
+
         // Calidad de los datos interpretados.
         if (parsed.via != null && parsed.via > 0) score += 30
         if (parsed.placa.matches(Regex("[A-Z]{3}\\d{3}"))) score += 50
@@ -325,28 +340,29 @@ object AviParser {
 
     private fun parseVia(viaSnippet: String, fullCleanText: String): Int? {
         val target = if (viaSnippet.isNotBlank()) viaSnippet else {
-            val direct = Regex("(?:via|carril|numero)\\s+(\\d+)", RegexOption.IGNORE_CASE).find(fullCleanText)
+            val direct = Regex("(?:via|carril|numero)\\s+(\\d+)", RegexOption.IGNORE_CASE)
+                .find(fullCleanText)
             if (direct != null) return direct.groupValues[1].toIntOrNull()
             ""
         }
 
-        // Si contiene dígitos numéricos directos: "151"
-        val directDigits = Regex("\\b\\d+\\b").find(target)
-        if (directDigits != null) {
-            return directDigits.value.toIntOrNull()
-        }
-
-        // Tomar solo el bloque numérico inicial de la vía. Al encontrar una palabra
-        // que ya no forma parte del número (por ejemplo, el comienzo de una placa),
-        // se detiene la lectura para no mezclar sus dígitos con la vía.
+        // Leer únicamente el bloque numérico inicial. Admite una mezcla de
+        // dígitos escritos por Android y código Q:
+        // "1 negativo 1" -> 101
+        // "primero 0 primero" -> 101
+        // "primero negativo primero" -> 101
         val numberTokens = mutableListOf<String>()
         var numberStarted = false
+
         for (token in target.split(" ").filter { it.isNotBlank() }) {
             val isJoiner = token == "y" || token == "numero" || token == "de"
-            val isNumberWord = singleDigits.containsKey(token) || spanishNumbers.containsKey(token)
+            val isDirectDigits = token.all { it.isDigit() }
+            val isNumberWord =
+                singleDigits.containsKey(token) ||
+                spanishNumbers.containsKey(token)
 
             when {
-                isNumberWord -> {
+                isDirectDigits || isNumberWord -> {
                     numberStarted = true
                     numberTokens.add(token)
                 }
@@ -357,17 +373,33 @@ object AviParser {
             }
         }
 
-        val tokens = numberTokens.filter { it != "y" && it != "numero" && it != "de" }
+        val tokens = numberTokens.filter {
+            it != "y" && it != "numero" && it != "de"
+        }
+
         if (tokens.isEmpty()) return null
 
-        // Caso A: Dígito individual a dígito, incluido código Q ("primero negativo primero" -> 101)
-        val areAllSingleDigits = tokens.all { singleDigits.containsKey(it) }
-        if (areAllSingleDigits) {
-            val digitString = tokens.map { singleDigits[it] }.joinToString("")
+        // Si todos son dígitos individuales/código Q, concatenarlos.
+        val areAllDigitLike = tokens.all { token ->
+            token.all { it.isDigit() } || singleDigits.containsKey(token)
+        }
+
+        if (areAllDigitLike) {
+            if (tokens.size == 1 && tokens[0].all { it.isDigit() }) {
+                return tokens[0].toIntOrNull()
+            }
+
+            val digitString = tokens.joinToString("") { token ->
+                when {
+                    token.all { it.isDigit() } -> token
+                    else -> singleDigits[token]?.toString().orEmpty()
+                }
+            }
+
             return digitString.toIntOrNull()
         }
 
-        // Caso B: Número compuesto en palabras ("ciento cincuenta y uno" -> 151)
+        // Números compuestos tradicionales: "ciento cincuenta y uno" -> 151.
         val compuesto = convertWordsToNumber(numberTokens.joinToString(" "))
         return if (compuesto > 0) compuesto else null
     }
