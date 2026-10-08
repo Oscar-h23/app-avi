@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -176,7 +177,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 _voiceState.value = _voiceState.value.copy(
                     isListening = true,
                     stage = DiagnosticStage.STAGE_1,
-                    stageDescription = "1/4 Micrófono abierto. Hable ahora...",
+                    stageDescription = "1/4 Diga: acción, vía y placa.",
                     errorMessage = null
                 )
             }
@@ -358,6 +359,19 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
 
+                    // Desde Android 13, sesgar el reconocedor hacia el vocabulario
+                    // operativo real de AVIX antes de que entregue las hipótesis.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        putStringArrayListExtra(
+                            RecognizerIntent.EXTRA_BIASING_STRINGS,
+                            ArrayList(
+                                AviParser.recognitionBiasingPhrases(
+                                    allowedVias = allowedVias
+                                )
+                            )
+                        )
+                    }
+
                     // Dar margen a pausas naturales entre acción, vía y placa.
                     // Algunos motores pueden ignorar estos extras, pero los que los
                     // soportan evitarán cortar el dictado demasiado pronto.
@@ -380,7 +394,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 _voiceState.value = _voiceState.value.copy(
                     isListening = true,
                     stage = DiagnosticStage.STAGE_1,
-                    stageDescription = "1/4 Micrófono abierto. Esperando tu voz...",
+                    stageDescription = "1/4 Escuchando: acción, vía y placa...",
                     recognizedText = "",
                     rmsLevel = 0f,
                     errorMessage = null
