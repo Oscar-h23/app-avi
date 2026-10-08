@@ -167,7 +167,7 @@ object AviParser {
 
         // Calidad de los datos interpretados.
         if (parsed.via != null && parsed.via > 0) score += 30
-        if (parsed.placa.matches(Regex("[A-Z]{3}\\d{3}"))) score += 50
+        if (parsed.placa.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))) score += 50
         else if (parsed.placa.isNotBlank()) score += 15
 
         if (parsed.valido) score += 80
@@ -315,8 +315,11 @@ object AviParser {
         val placaParsed = parsePlaca(placaWords)
         if (placaParsed.isBlank()) {
             errores.add("No se detectó la placa del vehículo. Por favor dictar o ingresar la placa.")
-        } else if (placaParsed.length < 6) {
-            advertencias.add("La placa detectada ($placaParsed) parece incompleta. Se esperan 6 caracteres (ej. ABC123).")
+        } else if (!isValidPeruPlate(placaParsed)) {
+            errores.add(
+                "La placa detectada ($placaParsed) no cumple el formato esperado: " +
+                    "1 letra, 2 caracteres alfanuméricos y 3 números."
+            )
         }
 
         // 4. Parser de Vía
@@ -431,63 +434,103 @@ object AviParser {
         return total
     }
 
+    private fun isValidPeruPlate(placa: String): Boolean {
+        return placa.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))
+    }
+
+    /**
+     * Construye la placa en el mismo orden en que fue dictada.
+     *
+     * Formato operativo esperado para vehículos:
+     * - posición 1: letra
+     * - posiciones 2 y 3: letra o número
+     * - posiciones 4, 5 y 6: número
+     *
+     * Ejemplos válidos:
+     * ABC123
+     * A1B234
+     * A12234
+     */
     private fun parsePlaca(placaSnippet: String): String {
-        val target = if (placaSnippet.isNotBlank()) placaSnippet else return ""
+        val target = placaSnippet.trim()
+        if (target.isBlank()) return ""
 
-        // Caso 1: Placa ya en formato alfanumérico compacto (ej. "ABC123", "ABC-123", "BTL245").
-        // Se busca únicamente dentro del fragmento posterior a la palabra "placa".
-        val directAlphanumeric = Regex("\\b([a-z]{3})[- ]?(\\d{3})\\b", RegexOption.IGNORE_CASE).find(target)
-        if (directAlphanumeric != null) {
-            val letters = directAlphanumeric.groupValues[1].uppercase(Locale.ROOT)
-            val digits = directAlphanumeric.groupValues[2]
-            return "$letters$digits"
-        }
+        // Caso 1: SpeechRecognizer ya devolvió la placa prácticamente completa.
+        // Admite ABC123, ABC-123, A1B234, A1B-234, A12 345, etc.
+        val compactCandidate = target
+            .uppercase(Locale.ROOT)
+            .replace("-", "")
+            .replace(" ", "")
 
-        // Caso 2: Deletreo fonético + dígitos normales o código Q ("alfa bravo charlie primero segundo tercero" -> "ABC123")
-        val tokens = target.split(" ").filter { it.isNotBlank() && it != "y" && it != "guion" && it != "menos" }
-        val lettersBuilder = StringBuilder()
-        val digitsBuilder = StringBuilder()
+        Regex("[A-Z][A-Z0-9]{2}\\d{3}")
+            .find(compactCandidate)
+            ?.value
+            ?.let { return it }
+
+        // Caso 2: construir secuencialmente desde alfabeto fonético + código Q.
+        val plateBuilder = StringBuilder()
+
+        val tokens = target
+            .split(" ")
+            .filter {
+                it.isNotBlank() &&
+                    it != "y" &&
+                    it != "guion" &&
+                    it != "menos"
+            }
 
         for (token in tokens) {
-            // Dígito directo
+            if (plateBuilder.length >= 6) break
+
+            // Android puede devolver bloques numéricos completos, ej. "234".
             if (token.all { it.isDigit() }) {
-                digitsBuilder.append(token)
-                continue
-            }
-
-            // Dígito en palabra
-            if (singleDigits.containsKey(token)) {
-                digitsBuilder.append(singleDigits[token])
-                continue
-            }
-
-            // Letra fonética
-            val mapped = phoneticAlphabet[token]
-            if (mapped != null) {
-                if (lettersBuilder.length < 3) {
-                    lettersBuilder.append(mapped)
+                for (digit in token) {
+                    if (plateBuilder.length >= 6) break
+                    plateBuilder.append(digit)
                 }
                 continue
             }
 
-            // Si es letra directa solitaria
+            // Código Q o número convencional.
+            singleDigits[token]?.let { digit ->
+                plateBuilder.append(digit)
+                return@let
+            }?.also {
+                return@for
+            }
+
+            // Letra fonética OTAN / variantes.
+            val mappedLetter = phoneticAlphabet[token]
+            if (mappedLetter != null) {
+                plateBuilder.append(mappedLetter)
+                continue
+            }
+
+            // Letra directa reconocida por Android.
             if (token.length == 1 && token[0].isLetter()) {
-                if (lettersBuilder.length < 3) {
-                    lettersBuilder.append(token.uppercase(Locale.ROOT))
+                plateBuilder.append(token.uppercase(Locale.ROOT))
+                continue
+            }
+
+            // Fragmento alfanumérico corto que Android pueda devolver unido,
+            // por ejemplo "A1B" o "B2".
+            if (
+                token.length in 2..6 &&
+                token.all { it.isLetterOrDigit() } &&
+                token.any { it.isDigit() }
+            ) {
+                token.uppercase(Locale.ROOT).forEach { ch ->
+                    if (plateBuilder.length < 6) {
+                        plateBuilder.append(ch)
+                    }
                 }
             }
         }
 
-        val letters = lettersBuilder.toString()
-        val digits = digitsBuilder.toString()
+        val candidate = plateBuilder.toString()
 
-        // Una placa válida debe contener letras (no inventar placa a partir de solo números)
-        return if (letters.isNotBlank() && digits.isNotBlank()) {
-            "$letters$digits"
-        } else if (letters.isNotBlank()) {
-            letters
-        } else {
-            ""
-        }
+        // Solo devolvemos hasta seis posiciones; la validación superior decide
+        // si la estructura completa es válida.
+        return candidate.take(6)
     }
 }
