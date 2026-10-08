@@ -574,6 +574,80 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testCorrigeHabiaComoViaSoloEnContextoOperativo() {
+        val normalized = AviParser.normalizeOperationalContext(
+            "Fuga había 101 placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertTrue(normalized.contains("fuga via 101"))
+    }
+
+    @Test
+    fun testParseaFugaHabia101ComoVia101() {
+        val result = AviParser.parse(
+            "Fuga había 101 placa Bravo Tango Lima segundo cuarto quinto",
+            allowedVias = setOf(101, 102)
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("BTL245", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testCorrigeViaYPlacaMalReconocidasPorContexto() {
+        val result = AviParser.parse(
+            "Fuga había primero negativo primero plata Alfa primero Bravo segundo tercero cuarto",
+            allowedVias = setOf(101, 102)
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("A1B234", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testNoConvierteHabiaEnViaSinAccionPrevia() {
+        val normalized = AviParser.normalizeOperationalContext(
+            "Había 101 placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertFalse(normalized.startsWith("via 101"))
+    }
+
+    @Test
+    fun testNoCorrigePalabraParecidaAViaSiNoLeSigueNumero() {
+        val normalized = AviParser.normalizeOperationalContext(
+            "Fuga había problemas placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertTrue(normalized.contains("habia problemas"))
+        assertFalse(normalized.contains("fuga via problemas"))
+    }
+
+    @Test
+    fun testInfierePalabraFoneticaCercanaSoloDentroDePlaca() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Alfaa primero Bravo segundo tercero cuarto"
+        )
+
+        assertEquals("A1B234", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testBiasingNoIncluyeErroresDeTranscripcion() {
+        val phrases = AviParser.recognitionBiasingPhrases(
+            allowedVias = setOf(101)
+        )
+
+        assertTrue(phrases.contains("fuga vía"))
+        assertTrue(phrases.contains("vía primero negativo primero"))
+        assertFalse(phrases.contains("fuga habia"))
+        assertFalse(phrases.contains("via plata"))
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
