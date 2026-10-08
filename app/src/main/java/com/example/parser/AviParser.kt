@@ -153,6 +153,16 @@ object AviParser {
         "quinto", "sexto", "septimo", "octavo", "noveno"
     )
 
+    private val canonicalPhoneticMap = mapOf(
+        "alfa" to "A", "bravo" to "B", "charlie" to "C", "delta" to "D",
+        "echo" to "E", "foxtrot" to "F", "golf" to "G", "hotel" to "H",
+        "india" to "I", "juliet" to "J", "kilo" to "K", "lima" to "L",
+        "mike" to "M", "november" to "N", "oscar" to "O", "papa" to "P",
+        "quebec" to "Q", "romeo" to "R", "sierra" to "S", "tango" to "T",
+        "uniform" to "U", "victor" to "V", "whiskey" to "W",
+        "yankee" to "Y", "zulu" to "Z"
+    )
+
     fun numberToQPhrase(value: Int): String {
         if (value < 0) return ""
         return value.toString()
@@ -277,6 +287,36 @@ object AviParser {
         }
 
         return previous[b.length]
+    }
+
+    private fun inferPhoneticLetter(token: String): String? {
+        if (token.length !in 3..10) return null
+
+        val ranked = canonicalPhoneticMap
+            .map { (word, letter) ->
+                Triple(word, letter, editDistance(token, word))
+            }
+            .sortedBy { it.third }
+
+        val best = ranked.firstOrNull() ?: return null
+        val second = ranked.getOrNull(1)
+
+        // Tolerancia según longitud. Además exigimos que la mejor coincidencia
+        // sea claramente mejor que la segunda para evitar adivinanzas.
+        val maxDistance = when {
+            token.length <= 4 -> 1
+            token.length <= 7 -> 2
+            else -> 3
+        }
+
+        val isUniqueEnough =
+            second == null || best.third + 1 < second.third
+
+        return if (best.third <= maxDistance && isUniqueEnough) {
+            best.second
+        } else {
+            null
+        }
     }
 
     private fun resemblesVia(token: String): Boolean {
@@ -896,6 +936,17 @@ object AviParser {
                 plateBuilder.append(mappedLetter)
                 index++
                 continue
+            }
+
+            // Solo en las primeras tres posiciones de una placa permitimos
+            // inferencia fonética aproximada. Las posiciones 4-6 son numéricas.
+            if (plateBuilder.length <= 2) {
+                val inferredLetter = inferPhoneticLetter(token)
+                if (inferredLetter != null) {
+                    plateBuilder.append(inferredLetter)
+                    index++
+                    continue
+                }
             }
 
             if (token.length == 1 && token[0].isLetter()) {
