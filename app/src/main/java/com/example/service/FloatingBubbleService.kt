@@ -656,7 +656,9 @@ fun FloatingOverlayContent(
                             onExpandToggle() // Minimiza la burbuja automáticamente
                         }
                     },
-                    enabled = placaInput.isNotBlank() &&
+                    enabled = AviParser.isValidPeruPlate(
+                            placaInput.uppercase().replace(" ", "").replace("-", "")
+                        ) &&
                             viaInput.toIntOrNull() != null &&
                             accionInput in listOf("FUGA", "DERIVADO"),
                     modifier = Modifier.fillMaxWidth(),
