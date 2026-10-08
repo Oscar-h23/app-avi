@@ -124,6 +124,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import com.example.api.SigoApiService
 import com.example.data.ApiConnectionState
 import com.example.data.IncidentRepository
 import com.example.model.DiagnosticStage
@@ -421,7 +422,7 @@ fun AviLoginScreen(repository: IncidentRepository) {
             text = {
                 Column {
                     Text(
-                        "Selecciona una dirección o escribe la URL del backend.",
+                        "AVIX usa SIGO-BACK desplegado en Railway. Las opciones locales quedan solo para desarrollo.",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -434,18 +435,34 @@ fun AviLoginScreen(repository: IncidentRepository) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = {
+                            tempUrl = SigoApiService.PRODUCTION_BASE_URL
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("Usar SIGO Producción", fontSize = 11.sp)
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = { tempUrl = "http://172.20.10.8:8080/" },
+                            onClick = {
+                                tempUrl = SigoApiService.LOCAL_MAC_BASE_URL
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Mac local", fontSize = 10.sp)
                         }
                         OutlinedButton(
-                            onClick = { tempUrl = "http://10.0.2.2:8080/" },
+                            onClick = {
+                                tempUrl = SigoApiService.EMULATOR_BASE_URL
+                            },
                             modifier = Modifier.weight(1f)
                         ) {
                             Text("Emulador", fontSize = 10.sp)
@@ -1994,11 +2011,23 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text(text = "Conexión a SIGO-BACK (Desarrollo)", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text(
-                    text = "Configure la IP de su Mac para emulador o celular físico",
+                    text = "Conexión a SIGO-BACK",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = if (urlInput.startsWith("https://sigo-back-production")) {
+                        "Producción • Railway"
+                    } else {
+                        "Modo desarrollo • URL personalizada"
+                    },
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (urlInput.startsWith("https://sigo-back-production")) {
+                        AviStatusOnline
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -2013,21 +2042,39 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
 
                 Spacer(modifier = Modifier.height(8.dp))
 
+                Button(
+                    onClick = {
+                        urlInput = SigoApiService.PRODUCTION_BASE_URL
+                        repository.updateConfig(urlInput)
+                        repository.verificarConexionSigo()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text("Usar SIGO Producción", fontSize = 11.sp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     OutlinedButton(
-                        onClick = { urlInput = "http://10.0.2.2:8080/" },
+                        onClick = {
+                            urlInput = SigoApiService.EMULATOR_BASE_URL
+                        },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("10.0.2.2 (Emulador)", fontSize = 10.sp)
+                        Text("Emulador", fontSize = 10.sp)
                     }
                     OutlinedButton(
-                        onClick = { urlInput = "http://172.20.10.8:8080/" },
+                        onClick = {
+                            urlInput = SigoApiService.LOCAL_MAC_BASE_URL
+                        },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text("172.20.10.8 (Mac)", fontSize = 10.sp)
+                        Text("Mac local", fontSize = 10.sp)
                     }
                 }
 
