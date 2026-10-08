@@ -129,7 +129,7 @@ class FloatingBubbleService : Service() {
 
     private fun startForegroundNotification() {
         val channelId = "avi_floating_service"
-        val channelName = "AVI Asistente Operativo"
+        val channelName = "AVIX Asistente Operativo"
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
@@ -137,7 +137,7 @@ class FloatingBubbleService : Service() {
                 channelName,
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Burbuja flotante activa de AVI para captura de incidencias"
+                description = "Burbuja flotante activa de AVIX para captura de incidencias"
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(channel)
@@ -152,7 +152,7 @@ class FloatingBubbleService : Service() {
         )
 
         val notification: Notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("AVI activo sobre otras aplicaciones")
+            .setContentTitle("AVIX activo sobre otras aplicaciones")
             .setContentText("Burbuja flotante lista para registrar incidencias por voz")
             .setSmallIcon(android.R.drawable.ic_btn_speak_now)
             .setContentIntent(pendingIntent)
@@ -235,7 +235,7 @@ class FloatingBubbleService : Service() {
             windowManager?.addView(overlayView, windowLayoutParams)
         } catch (e: Exception) {
             e.printStackTrace()
-            Toast.makeText(this, "Permiso de superposición necesario para AVI", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Permiso de superposición necesario para AVIX", Toast.LENGTH_LONG).show()
             stopSelf()
         }
     }
@@ -361,12 +361,12 @@ fun FloatingOverlayContent(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Mic,
-                        contentDescription = "Abrir AVI",
+                        contentDescription = "Abrir AVIX",
                         tint = if (voiceState.isListening) Color(0xFFEF4444) else Color(0xFF38BDF8),
                         modifier = Modifier.size(28.dp)
                     )
                     Text(
-                        text = "AVI",
+                        text = "AVIX",
                         color = Color.White,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold
@@ -415,7 +415,7 @@ fun FloatingOverlayContent(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "AVI - Asistente Flotante",
+                            text = "AVIX - Asistente Flotante",
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
