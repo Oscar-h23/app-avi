@@ -258,6 +258,29 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testCodigoQMezcladoConDigitosEnVia() {
+        val result = AviParser.parse(
+            "Fuga vía 1 negativo 1 placa Bravo Tango Lima segundo cuarto quinto"
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("BTL245", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testOrdenOperacionViaPlacaRecibeMayorPuntaje() {
+        val ordenCorrecto = AviParser.scoreCandidate(
+            "Fuga vía primero negativo primero placa Bravo Tango Lima segundo cuarto quinto"
+        )
+        val ordenAlterado = AviParser.scoreCandidate(
+            "Placa Bravo Tango Lima segundo cuarto quinto fuga vía primero negativo primero"
+        )
+
+        assertTrue(ordenCorrecto > ordenAlterado)
+    }
+
+    @Test
     fun testSeleccionaMejorHipotesisAunqueNoSeaLaPrimera() {
         val candidates = listOf(
             "Fuga vía primero negativo primero Bravo Tango Lima segundo cuarto quinto",
