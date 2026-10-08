@@ -403,7 +403,13 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     }
 
     fun startListening() {
+        // Una pulsación del usuario inicia una sesión completamente nueva.
         enhancedFallbackAttempted = false
+        _voiceState.value = _voiceState.value.copy(
+            retryCount = 0,
+            errorMessage = null,
+            recognizedText = ""
+        )
         startListeningInternal(preferEnhancedAudio = true)
     }
 
