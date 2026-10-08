@@ -25,22 +25,22 @@ object AviParser {
 
     private val phoneticAlphabet = mapOf(
         "alfa" to "A", "alpha" to "A",
-        "bravo" to "B",
-        "charlie" to "C", "charli" to "C",
-        "delta" to "D",
-        "echo" to "E", "eco" to "E",
-        "foxtrot" to "F", "fox" to "F",
-        "golf" to "G",
+        "bravo" to "B", "brabo" to "B",
+        "charlie" to "C", "charli" to "C", "charly" to "C", "chali" to "C",
+        "delta" to "D", "dhelta" to "D",
+        "echo" to "E", "eco" to "E", "hecho" to "E",
+        "foxtrot" to "F", "fox trot" to "F", "fox" to "F",
+        "golf" to "G", "gol" to "G",
         "hotel" to "H",
         "india" to "I",
-        "juliet" to "J", "julieta" to "J",
-        "kilo" to "K",
+        "juliet" to "J", "julieta" to "J", "yuliet" to "J",
+        "kilo" to "K", "quilo" to "K",
         "lima" to "L",
         "mike" to "M", "maik" to "M", "mic" to "M",
         "november" to "N", "noviembre" to "N",
         "oscar" to "O",
         "papa" to "P",
-        "quebec" to "Q", "quebek" to "Q",
+        "quebec" to "Q", "quebek" to "Q", "quebeck" to "Q",
         "romeo" to "R",
         "sierra" to "S",
         "tango" to "T",
@@ -48,8 +48,8 @@ object AviParser {
         "victor" to "V",
         "whiskey" to "W", "whisky" to "W", "wisky" to "W", "wiski" to "W",
         "xray" to "X", "x ray" to "X", "exray" to "X", "equisray" to "X", "equis ray" to "X", "ray" to "X", "equis" to "X",
-        "yankee" to "Y", "yanki" to "Y",
-        "zulu" to "Z",
+        "yankee" to "Y", "yanki" to "Y", "yanqui" to "Y",
+        "zulu" to "Z", "sulu" to "Z",
         "a" to "A",
         "be" to "B", "ve grande" to "B", "be alta" to "B",
         "ce" to "C",
@@ -126,6 +126,63 @@ object AviParser {
     )
 
     private val viaKeywords = listOf("via ", "carril ", "pista ", "numero ")
+
+    private val canonicalPhoneticWords = listOf(
+        "alfa", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
+        "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
+        "quebec", "romeo", "sierra", "tango", "uniform", "victor", "whiskey",
+        "x ray", "yankee", "zulu"
+    )
+
+    private val canonicalQDigits = listOf(
+        "negativo", "primero", "segundo", "tercero", "cuarto",
+        "quinto", "sexto", "septimo", "octavo", "noveno"
+    )
+
+    fun numberToQPhrase(value: Int): String {
+        if (value < 0) return ""
+        return value.toString()
+            .mapNotNull { ch ->
+                ch.digitToIntOrNull()?.let { digit -> canonicalQDigits[digit] }
+            }
+            .joinToString(" ")
+    }
+
+    /**
+     * Vocabulario contextual entregado al SpeechRecognizer cuando la versión
+     * de Android soporta biasing strings. Incluye dominio AVIX, código Q,
+     * alfabeto fonético y las vías reales de la plaza.
+     */
+    fun recognitionBiasingPhrases(
+        allowedVias: Set<Int> = emptySet()
+    ): List<String> {
+        val phrases = mutableListOf(
+            "fuga",
+            "derivado",
+            "fuga vía",
+            "derivado vía",
+            "vía",
+            "placa",
+            "vía placa",
+            "acción vía placa"
+        )
+
+        phrases += canonicalPhoneticWords
+        phrases += canonicalQDigits
+
+        for (via in allowedVias.filter { it > 0 }.sorted()) {
+            phrases += via.toString()
+            phrases += "vía $via"
+
+            val qPhrase = numberToQPhrase(via)
+            if (qPhrase.isNotBlank()) {
+                phrases += qPhrase
+                phrases += "vía $qPhrase"
+            }
+        }
+
+        return phrases.distinct().take(100)
+    }
 
     fun normalize(text: String): String {
         val withoutAccents = Normalizer.normalize(text, Normalizer.Form.NFD)
