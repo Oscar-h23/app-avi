@@ -514,6 +514,64 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testNumeroViaSeConvierteACodigoQContextual() {
+        assertEquals(
+            "primero negativo primero",
+            AviParser.numberToQPhrase(101)
+        )
+        assertEquals(
+            "primero quinto primero",
+            AviParser.numberToQPhrase(151)
+        )
+    }
+
+    @Test
+    fun testVocabularioDeReconocimientoIncluyeViasReales() {
+        val phrases = AviParser.recognitionBiasingPhrases(
+            allowedVias = setOf(101, 102)
+        )
+
+        assertTrue(phrases.contains("fuga"))
+        assertTrue(phrases.contains("derivado"))
+        assertTrue(phrases.contains("placa"))
+        assertTrue(phrases.contains("alfa"))
+        assertTrue(phrases.contains("negativo"))
+        assertTrue(phrases.contains("vía 101"))
+        assertTrue(phrases.contains("vía primero negativo primero"))
+        assertTrue(phrases.contains("vía primero negativo segundo"))
+    }
+
+    @Test
+    fun testVarianteFoneticaBraboSeInterpretaComoB() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Alfa primero Brabo segundo tercero cuarto"
+        )
+
+        assertEquals("A1B234", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testAliasFoneticoCompuestoFoxTrotFuncionaEnPlaca() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Alfa Fox Trot Bravo segundo tercero cuarto"
+        )
+
+        assertEquals("AFB234", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testVariantesYanquiYSuluSeInterpretanEnContextoDePlaca() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa Yanqui Sulu Bravo segundo tercero cuarto"
+        )
+
+        assertEquals("YZB234", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
