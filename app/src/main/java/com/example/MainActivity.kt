@@ -212,7 +212,7 @@ fun AviLoginScreen(repository: IncidentRepository) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Logo AVI
+            // Logo AVIX
             Surface(
                 modifier = Modifier.size(96.dp),
                 shape = CircleShape,
@@ -222,7 +222,7 @@ fun AviLoginScreen(repository: IncidentRepository) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.Security,
-                        contentDescription = "Logo AVI",
+                        contentDescription = "Logo AVIX",
                         tint = Color(0xFF00B4D8),
                         modifier = Modifier.size(52.dp)
                     )
@@ -232,7 +232,7 @@ fun AviLoginScreen(repository: IncidentRepository) {
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "AVI",
+                text = "AVIX",
                 fontSize = 32.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = Color.White,
@@ -365,7 +365,7 @@ fun AviLoginScreen(repository: IncidentRepository) {
                                 if (result.isFailure) {
                                     errorMessage = result.exceptionOrNull()?.message ?: "Error al autenticar."
                                 } else {
-                                    Toast.makeText(context, "Bienvenido a AVI", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Bienvenido a AVIX", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         },
@@ -547,7 +547,7 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "AVI • Peajes",
+                                text = "AVIX • Peajes",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 16.sp
                             )
@@ -613,19 +613,19 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                                     Uri.parse("package:${context.packageName}")
                                 )
                                 context.startActivity(intent)
-                                Toast.makeText(context, "Conceda permiso para superponer burbuja AVI", Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, "Conceda permiso para superponer burbuja AVIX", Toast.LENGTH_LONG).show()
                             } else {
                                 val intent = Intent(context, FloatingBubbleService::class.java)
                                 if (FloatingBubbleService.isRunning) {
                                     context.stopService(intent)
-                                    Toast.makeText(context, "Burbuja AVI desactivada", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Burbuja AVIX desactivada", Toast.LENGTH_SHORT).show()
                                 } else {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                                         context.startForegroundService(intent)
                                     } else {
                                         context.startService(intent)
                                     }
-                                    Toast.makeText(context, "Burbuja flotante AVI activada encima de otras apps", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Burbuja flotante AVIX activada encima de otras apps", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -1470,7 +1470,7 @@ fun PantallaConfirmacion(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Datos Interpretados por AVI",
+                    text = "Datos Interpretados por AVIX",
                     fontWeight = FontWeight.Bold,
                     fontSize = 15.sp,
                     color = AviNavy
@@ -2037,7 +2037,7 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(text = "Burbuja Flotante AVI", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text(text = "Burbuja Flotante AVIX", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     Text(
                         text = "Permite dictar incidencias encima de la app de peaje de la empresa",
                         fontSize = 12.sp,
