@@ -648,6 +648,36 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testPlacaI1L110ConNegativoFinal() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa India primero Lima primero primero negativo"
+        )
+
+        assertEquals("I1L110", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaI1L110CorrigeDigitoDuplicadoAntesDeNegativo() {
+        val result = AviParser.parse(
+            "Fuga vía primero negativo primero placa India primero Lima primero primero primero negativo"
+        )
+
+        assertEquals("I1L110", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaCompactaConNegativoFinalNoSeCortaAntes() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa I1L111 negativo"
+        )
+
+        assertEquals("I1L110", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
