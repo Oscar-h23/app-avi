@@ -73,6 +73,10 @@ class IncidentRepository private constructor(context: Context) {
                     .putBoolean(KEY_PROD_MIGRATION_V1, true)
                     .apply()
 
+                // El token previo pudo haber sido emitido por el backend local.
+                // Forzar una nueva autenticación contra producción evita 401 posteriores.
+                sessionManager.clearSession()
+
                 return SigoApiService.PRODUCTION_BASE_URL
             }
 
