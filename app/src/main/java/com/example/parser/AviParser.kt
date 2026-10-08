@@ -434,7 +434,7 @@ object AviParser {
         return total
     }
 
-    private fun isValidPeruPlate(placa: String): Boolean {
+    fun isValidPeruPlate(placa: String): Boolean {
         return placa.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))
     }
 
@@ -492,11 +492,10 @@ object AviParser {
             }
 
             // Código Q o número convencional.
-            singleDigits[token]?.let { digit ->
-                plateBuilder.append(digit)
-                return@let
-            }?.also {
-                return@for
+            val mappedDigit = singleDigits[token]
+            if (mappedDigit != null) {
+                plateBuilder.append(mappedDigit)
+                continue
             }
 
             // Letra fonética OTAN / variantes.
