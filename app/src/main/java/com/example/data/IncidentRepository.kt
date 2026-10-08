@@ -54,9 +54,37 @@ class IncidentRepository private constructor(context: Context) {
     private val scope = CoroutineScope(Dispatchers.IO)
     private val syncMutex = Mutex()
 
-    // Configuración actual: URL predeterminada hacia la IP de desarrollo del usuario
-    private var baseUrl: String = prefs.getString("sigo_base_url", SigoApiService.DEFAULT_BASE_URL)
-        ?: SigoApiService.DEFAULT_BASE_URL
+    // Configuración actual. En instalaciones existentes migramos una sola vez
+    // desde las URLs locales antiguas hacia el backend productivo desplegado.
+    private var baseUrl: String = resolveInitialBaseUrl()
+
+    private fun resolveInitialBaseUrl(): String {
+        val stored = prefs.getString(KEY_BASE_URL, null)?.trim()
+        val migrationDone = prefs.getBoolean(KEY_PROD_MIGRATION_V1, false)
+
+        if (!migrationDone) {
+            val shouldMigrate = stored.isNullOrBlank() ||
+                stored == SigoApiService.LOCAL_MAC_BASE_URL ||
+                stored == SigoApiService.EMULATOR_BASE_URL
+
+            if (shouldMigrate) {
+                prefs.edit()
+                    .putString(KEY_BASE_URL, SigoApiService.PRODUCTION_BASE_URL)
+                    .putBoolean(KEY_PROD_MIGRATION_V1, true)
+                    .apply()
+
+                return SigoApiService.PRODUCTION_BASE_URL
+            }
+
+            prefs.edit()
+                .putBoolean(KEY_PROD_MIGRATION_V1, true)
+                .apply()
+        }
+
+        return stored
+            ?.let { if (it.endsWith("/")) it else "$it/" }
+            ?: SigoApiService.DEFAULT_BASE_URL
+    }
 
     private var sigoApi: SigoApiService = SigoApiService.create(baseUrl) {
         sessionManager.getToken()
@@ -229,7 +257,8 @@ class IncidentRepository private constructor(context: Context) {
 
         baseUrl = trimmed
         prefs.edit()
-            .putString("sigo_base_url", baseUrl)
+            .putString(KEY_BASE_URL, baseUrl)
+            .putBoolean(KEY_PROD_MIGRATION_V1, true)
             .apply()
 
         sigoApi = SigoApiService.create(baseUrl) {
@@ -554,6 +583,8 @@ class IncidentRepository private constructor(context: Context) {
 
     companion object {
         private const val TAG = "IncidentRepository"
+        private const val KEY_BASE_URL = "sigo_base_url"
+        private const val KEY_PROD_MIGRATION_V1 = "sigo_prod_migration_v1"
 
         @Volatile
         private var INSTANCE: IncidentRepository? = null
