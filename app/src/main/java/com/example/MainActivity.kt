@@ -516,34 +516,18 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
         topBar = {
             TopAppBar(
                 title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFF0077B6),
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    Icons.Default.Security,
-                                    contentDescription = null,
-                                    tint = Color.White,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                            }
-                        }
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "AVIX",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
-                            )
-                            Text(
-                                text = "${usuario?.nombre ?: "Operador"} (${usuario?.plaza ?: "P4"})",
-                                fontSize = 11.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                    Column {
+                        Text(
+                            text = "AVIX",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 17.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "${usuario?.nombre ?: "Operador"} • ${usuario?.plaza ?: "Sin plaza"}",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 actions = {
@@ -620,7 +604,7 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         Icon(
                             imageVector = Icons.Default.Layers,
                             contentDescription = "Burbuja Flotante",
-                            tint = if (FloatingBubbleService.isRunning) Color(0xFF0077B6) else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (FloatingBubbleService.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
