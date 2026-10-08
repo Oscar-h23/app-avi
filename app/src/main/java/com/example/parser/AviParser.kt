@@ -62,7 +62,24 @@ object AviParser {
         "zeta" to "Z", "ceta" to "Z"
     )
 
+    // Dígitos operativos: acepta números normales y código Q usado por AVIX.
+    // 0=NEGATIVO, 1=PRIMERO, 2=SEGUNDO, 3=TERCERO ... 9=NOVENO.
+    // Se incluyen variantes gramaticales porque SpeechRecognizer puede devolver
+    // "primer", "primera", "segunda", etc. dependiendo del contexto.
     private val singleDigits = mapOf(
+        // Código Q / ordinales operativos
+        "negativo" to 0, "negativa" to 0,
+        "primero" to 1, "primer" to 1, "primera" to 1,
+        "segundo" to 2, "segunda" to 2,
+        "tercero" to 3, "tercer" to 3, "tercera" to 3,
+        "cuarto" to 4, "cuarta" to 4,
+        "quinto" to 5, "quinta" to 5,
+        "sexto" to 6, "sexta" to 6,
+        "septimo" to 7, "septima" to 7,
+        "octavo" to 8, "octava" to 8,
+        "noveno" to 9, "novena" to 9,
+
+        // Compatibilidad con pronunciación numérica convencional
         "cero" to 0,
         "uno" to 1, "un" to 1, "una" to 1,
         "dos" to 2,
@@ -114,9 +131,76 @@ object AviParser {
 
     /**
      * Interpreta un comando dictado localmente sin depender de ninguna IA externa.
-     * Ejemplo: "Placa alfa bravo charlie uno dos tres, vía uno cinco uno, fuga"
-     * -> Placa: ABC123, Vía: 151, Acción: FUGA
+     * Ejemplo Q: "Fuga vía primero negativo primero placa Alfa Bravo Charlie primero segundo tercero"
+     * -> Placa: ABC123, Vía: 101, Acción: FUGA
      */
+    /**
+     * Puntúa una hipótesis de SpeechRecognizer según la estructura esperada por AVIX.
+     * Se priorizan marcadores explícitos y un resultado completamente válido.
+     */
+    fun scoreCandidate(rawText: String): Int {
+        val clean = normalize(rawText)
+        if (clean.isBlank()) return Int.MIN_VALUE
+
+        val parsed = parse(rawText)
+        var score = 0
+
+        // Estructura operativa explícita.
+        if (aliasFuga.any { clean.contains(it) } || aliasDerivado.any { clean.contains(it) }) score += 20
+        if (Regex("\\b(via|carril|pista)\\b").containsMatchIn(clean)) score += 25
+        if (Regex("\\bplaca\\b").containsMatchIn(clean)) score += 35
+
+        // Calidad de los datos interpretados.
+        if (parsed.via != null && parsed.via > 0) score += 30
+        if (parsed.placa.matches(Regex("[A-Z]{3}\\d{3}"))) score += 50
+        else if (parsed.placa.isNotBlank()) score += 15
+
+        if (parsed.valido) score += 80
+        score -= parsed.errores.size * 25
+        score -= parsed.advertencias.size * 5
+
+        // Si SpeechRecognizer entendió expresiones del código Q, es una señal positiva
+        // dentro de este dominio operativo.
+        val qTokens = setOf(
+            "negativo", "negativa",
+            "primero", "primer", "primera",
+            "segundo", "segunda",
+            "tercero", "tercer", "tercera",
+            "cuarto", "cuarta", "quinto", "quinta",
+            "sexto", "sexta", "septimo", "septima",
+            "octavo", "octava", "noveno", "novena"
+        )
+        score += clean.split(" ").count { it in qTokens } * 3
+
+        return score
+    }
+
+    /**
+     * Elige la mejor alternativa del reconocimiento de voz en vez de aceptar
+     * automáticamente la primera hipótesis devuelta por Android.
+     */
+    fun selectBestHypothesis(
+        candidates: List<String>,
+        confidenceScores: FloatArray? = null
+    ): String {
+        if (candidates.isEmpty()) return ""
+
+        return candidates
+            .mapIndexed { index, candidate ->
+                val confidence = confidenceScores
+                    ?.getOrNull(index)
+                    ?.takeIf { it >= 0f }
+                    ?: 0f
+
+                // La confianza del motor desempata, pero la estructura AVIX pesa más.
+                val combinedScore = scoreCandidate(candidate) + (confidence * 20f)
+                candidate to combinedScore
+            }
+            .maxByOrNull { it.second }
+            ?.first
+            .orEmpty()
+    }
+
     fun parse(rawText: String): ParsedCommand {
         val clean = normalize(rawText)
 
@@ -276,7 +360,7 @@ object AviParser {
         val tokens = numberTokens.filter { it != "y" && it != "numero" && it != "de" }
         if (tokens.isEmpty()) return null
 
-        // Caso A: Dígito individual a dígito ("uno cinco uno" -> 151)
+        // Caso A: Dígito individual a dígito, incluido código Q ("primero negativo primero" -> 101)
         val areAllSingleDigits = tokens.all { singleDigits.containsKey(it) }
         if (areAllSingleDigits) {
             val digitString = tokens.map { singleDigits[it] }.joinToString("")
@@ -327,7 +411,7 @@ object AviParser {
             return "$letters$digits"
         }
 
-        // Caso 2: Deletreo fonético ("alfa bravo charlie uno dos tres" -> "ABC123")
+        // Caso 2: Deletreo fonético + dígitos normales o código Q ("alfa bravo charlie primero segundo tercero" -> "ABC123")
         val tokens = target.split(" ").filter { it.isNotBlank() && it != "y" && it != "guion" && it != "menos" }
         val lettersBuilder = StringBuilder()
         val digitsBuilder = StringBuilder()
