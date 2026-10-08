@@ -65,6 +65,11 @@ class IncidentRepository private constructor(context: Context) {
     private val _connectionState = MutableStateFlow(ApiConnectionState.OFFLINE)
     val connectionState: StateFlow<ApiConnectionState> = _connectionState.asStateFlow()
 
+    // Vías activas reales de la plaza del operador. Si la consulta no está disponible,
+    // se mantiene vacío para no bloquear el registro offline.
+    private val _allowedVias = MutableStateFlow<Set<Int>>(emptySet())
+    val allowedVias: StateFlow<Set<Int>> = _allowedVias.asStateFlow()
+
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
@@ -83,11 +88,54 @@ class IncidentRepository private constructor(context: Context) {
 
     init {
         verificarConexionSigo()
+        scope.launch {
+            cargarViasPermitidas()
+        }
     }
 
     fun getBaseUrl(): String = baseUrl
 
     fun getUsuarioActual(): UsuarioDto? = sessionManager.getUsuario()
+
+    fun getAllowedVias(): Set<Int> = _allowedVias.value
+
+    fun isViaPermitida(via: Int): Boolean {
+        val configured = _allowedVias.value
+        return configured.isEmpty() || via in configured
+    }
+
+    suspend fun cargarViasPermitidas(
+        plazaId: Long? = sessionManager.getUsuario()?.plazaId
+    ): Set<Int> {
+        if (plazaId == null || plazaId <= 0L || sessionManager.getToken().isNullOrBlank()) {
+            _allowedVias.value = emptySet()
+            return emptySet()
+        }
+
+        return try {
+            val response = sigoApi.listarVias(plazaId)
+            if (response.isSuccessful) {
+                val vias = response.body()
+                    .orEmpty()
+                    .filter { it.activa }
+                    .map { it.numero }
+                    .filter { it > 0 }
+                    .toSet()
+
+                _allowedVias.value = vias
+                Log.i(TAG, "Vías cargadas para plaza $plazaId: $vias")
+                vias
+            } else {
+                Log.w(TAG, "No se pudieron cargar vías de plaza $plazaId: HTTP ${response.code()}")
+                _allowedVias.value = emptySet()
+                emptySet()
+            }
+        } catch (e: Throwable) {
+            Log.w(TAG, "No se pudieron cargar vías de la plaza: ${e.message}")
+            _allowedVias.value = emptySet()
+            emptySet()
+        }
+    }
 
     fun isUsuarioAutenticado(): Boolean = sessionManager.isLoggedIn()
 
@@ -133,6 +181,9 @@ class IncidentRepository private constructor(context: Context) {
 
                     Log.i(TAG, "Login exitoso para código de operador: $codigo")
 
+                    // Cargar catálogo real de vías de la plaza para validar el motor de voz.
+                    cargarViasPermitidas(loginResponse.usuario?.plazaId)
+
                     // Al iniciar sesión, sincronizar pendientes locales si los hubiera
                     scope.launch {
                         sincronizarPendientes()
@@ -165,6 +216,7 @@ class IncidentRepository private constructor(context: Context) {
      */
     fun logout() {
         sessionManager.clearSession()
+        _allowedVias.value = emptySet()
         _lastSyncSummary.value = "Sesión cerrada. Los registros pendientes permanecen en el dispositivo."
     }
 
@@ -184,6 +236,9 @@ class IncidentRepository private constructor(context: Context) {
             sessionManager.getToken()
         }
         verificarConexionSigo()
+        scope.launch {
+            cargarViasPermitidas()
+        }
         return true
     }
 
@@ -233,6 +288,14 @@ class IncidentRepository private constructor(context: Context) {
             }
             if (via == null || via <= 0) {
                 return@withContext Result.failure(IllegalArgumentException("La vía no puede estar vacía o ser menor a 1."))
+            }
+            if (!isViaPermitida(via)) {
+                val permitidas = _allowedVias.value.sorted().joinToString(", ")
+                return@withContext Result.failure(
+                    IllegalArgumentException(
+                        "La vía $via no está habilitada para esta plaza. Vías disponibles: $permitidas"
+                    )
+                )
             }
 
             val plazaActiva = sessionManager.getUsuario()?.plaza ?: plazaIdFallback
