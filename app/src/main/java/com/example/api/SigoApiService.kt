@@ -5,6 +5,7 @@ import com.example.model.LoginResponse
 import com.example.model.RegistroSigoRequest
 import com.example.model.RegistroSigoResponse
 import com.example.model.SigoStatusResponse
+import com.example.model.ViaDto
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import okhttp3.Interceptor
@@ -38,6 +39,15 @@ interface SigoApiService {
      */
     @GET("api/avi/status")
     suspend fun getStatus(): Response<SigoStatusResponse>
+
+    /**
+     * Vías activas configuradas para una plaza.
+     * GET /api/vias?plazaId={id}
+     */
+    @GET("api/vias")
+    suspend fun listarVias(
+        @Query("plazaId") plazaId: Long
+    ): Response<List<ViaDto>>
 
     /**
      * Envío y confirmación de evento vehicular (FUGA / DERIVADO).
