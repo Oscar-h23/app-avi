@@ -54,7 +54,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
@@ -200,11 +200,15 @@ class FloatingBubbleService : Service() {
 
             setContent {
                 MaterialTheme(
-                    colorScheme = darkColorScheme(
-                        primary = Color(0xFF38BDF8),
-                        secondary = Color(0xFFF59E0B),
-                        background = Color(0xFF0F172A),
-                        surface = Color(0xFF1E293B)
+                    colorScheme = lightColorScheme(
+                        primary = Color(0xFF0B5CAB),
+                        secondary = Color(0xFF2563EB),
+                        background = Color(0xFFF8FAFC),
+                        surface = Color.White,
+                        surfaceVariant = Color(0xFFF1F5F9),
+                        onSurface = Color(0xFF132033),
+                        onSurfaceVariant = Color(0xFF64748B),
+                        outline = Color(0xFFDFE5EE)
                     )
                 ) {
                     FloatingOverlayContent(
@@ -383,9 +387,9 @@ fun FloatingOverlayContent(
                 .shadow(16.dp, RoundedCornerShape(20.dp)),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(
-                containerColor = Color(0xFF0F172A).copy(alpha = 0.96f)
+                containerColor = Color.White
             ),
-            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF38BDF8).copy(alpha = 0.6f))
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFDFE5EE))
         ) {
             Column(
                 modifier = Modifier
@@ -415,8 +419,8 @@ fun FloatingOverlayContent(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "AVIX - Asistente Flotante",
-                            color = Color.White,
+                            text = "AVIX",
+                            color = Color(0xFF132033),
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
@@ -430,7 +434,7 @@ fun FloatingOverlayContent(
                             Icon(
                                 imageVector = Icons.Default.KeyboardArrowDown,
                                 contentDescription = "Minimizar",
-                                tint = Color.LightGray
+                                tint = Color(0xFF64748B)
                             )
                         }
                         IconButton(
@@ -450,8 +454,8 @@ fun FloatingOverlayContent(
 
                 // Guía breve del orden de dictado
                 Text(
-                    text = "ORDEN: [ACCIÓN] + [VÍA] + [PLACA]",
-                    color = Color(0xFF38BDF8),
+                    text = "ACCIÓN  →  VÍA  →  PLACA",
+                    color = Color(0xFF0B5CAB),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -469,7 +473,7 @@ fun FloatingOverlayContent(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (voiceState.isListening) Color(0xFFDC2626) else Color(0xFF0284C7)
+                        containerColor = if (voiceState.isListening) Color(0xFFD64545) else Color(0xFF0B5CAB)
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
@@ -547,10 +551,10 @@ fun FloatingOverlayContent(
                         modifier = Modifier.weight(1.2f),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF38BDF8),
-                            unfocusedBorderColor = Color(0xFF475569),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedBorderColor = Color(0xFF0B5CAB),
+                            unfocusedBorderColor = Color(0xFFDFE5EE),
+                            focusedTextColor = Color(0xFF132033),
+                            unfocusedTextColor = Color(0xFF132033)
                         )
                     )
                     Spacer(modifier = Modifier.width(6.dp))
@@ -561,10 +565,10 @@ fun FloatingOverlayContent(
                         modifier = Modifier.weight(0.8f),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF38BDF8),
-                            unfocusedBorderColor = Color(0xFF475569),
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White
+                            focusedBorderColor = Color(0xFF0B5CAB),
+                            unfocusedBorderColor = Color(0xFFDFE5EE),
+                            focusedTextColor = Color(0xFF132033),
+                            unfocusedTextColor = Color(0xFF132033)
                         )
                     )
                 }
@@ -580,7 +584,7 @@ fun FloatingOverlayContent(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = "Texto: \"$textoOriginalInput\"",
-                        color = Color.LightGray,
+                        color = Color(0xFF64748B),
                         fontSize = 11.sp,
                         fontStyle = androidx.compose.ui.text.font.FontStyle.Italic
                     )
@@ -621,7 +625,7 @@ fun FloatingOverlayContent(
                             accionInput in listOf("FUGA", "DERIVADO"),
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF059669)
+                        containerColor = Color(0xFF0B5CAB)
                     ),
                     shape = RoundedCornerShape(10.dp)
                 ) {
