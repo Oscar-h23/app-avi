@@ -188,14 +188,7 @@ object AviParser {
             "vía",
             "placa",
             "vía placa",
-            "acción vía placa",
-            // Variantes que el ASR suele producir. Se incluyen como contexto,
-            // pero el parser solo las corrige si la gramática operativa coincide.
-            "fuga habia",
-            "fuga avia",
-            "fuga dia",
-            "via placa",
-            "via plata"
+            "acción vía placa"
         )
 
         // Priorizar frases completas de vía para que el reconocedor use
