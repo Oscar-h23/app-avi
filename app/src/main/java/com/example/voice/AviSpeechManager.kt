@@ -13,6 +13,7 @@ import android.speech.SpeechRecognizer
 import androidx.core.content.ContextCompat
 import com.example.model.DiagnosticStage
 import com.example.model.VoiceState
+import com.example.parser.AviParser
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -124,13 +125,24 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             }
 
             override fun onResults(results: Bundle?) {
-                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val text = matches?.firstOrNull() ?: ""
+                val matches = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.filter { it.isNotBlank() }
+                    .orEmpty()
+
+                val confidenceScores = results
+                    ?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+
+                val text = AviParser.selectBestHypothesis(
+                    candidates = matches,
+                    confidenceScores = confidenceScores
+                )
+
                 if (text.isNotBlank()) {
                     _voiceState.value = _voiceState.value.copy(
                         isListening = false,
                         stage = DiagnosticStage.STAGE_4,
-                        stageDescription = "4/4 Texto reconocido con éxito: \"$text\"",
+                        stageDescription = "4/4 Mejor interpretación seleccionada",
                         recognizedText = text,
                         retryCount = 0,
                         errorMessage = null
@@ -142,13 +154,18 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             }
 
             override fun onPartialResults(partialResults: Bundle?) {
-                val matches = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val partialText = matches?.firstOrNull() ?: ""
+                val matches = partialResults
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.filter { it.isNotBlank() }
+                    .orEmpty()
+
+                val partialText = AviParser.selectBestHypothesis(matches)
+
                 if (partialText.isNotBlank()) {
                     _voiceState.value = _voiceState.value.copy(
                         recognizedText = partialText,
                         stage = DiagnosticStage.STAGE_3,
-                        stageDescription = "3/4 Transcribiendo: $partialText"
+                        stageDescription = "3/4 Interpretando comando..."
                     )
                 }
             }
@@ -227,7 +244,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "es-PE")
                     putExtra(RecognizerIntent.EXTRA_ONLY_RETURN_LANGUAGE_PREFERENCE, "es-PE")
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
                     putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, appContext.packageName)
                 }
 
@@ -235,6 +252,8 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     isListening = true,
                     stage = DiagnosticStage.STAGE_1,
                     stageDescription = "1/4 Micrófono abierto. Esperando tu voz...",
+                    recognizedText = "",
+                    rmsLevel = 0f,
                     errorMessage = null
                 )
 
