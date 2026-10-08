@@ -45,11 +45,14 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -346,6 +349,7 @@ fun FloatingOverlayContent(
     var fechaHoraEventoCapturada by remember { mutableStateOf(AviDateUtils.nowLimaIso()) }
     var mensajeRegistro by remember { mutableStateOf<String?>(null) }
     var mensajeVoz by remember { mutableStateOf<String?>(null) }
+    var viaMenuExpanded by remember { mutableStateOf(false) }
     var lastParsedCommand by remember {
         mutableStateOf(
             ParsedCommand(
@@ -620,10 +624,17 @@ fun FloatingOverlayContent(
                 Spacer(modifier = Modifier.height(6.dp))
 
                 // Campos interpretados (Placa y Vía)
-                Row(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     OutlinedTextField(
                         value = placaInput,
-                        onValueChange = { placaInput = it },
+                        onValueChange = {
+                            placaInput = it.uppercase()
+                                .replace(" ", "")
+                                .replace("-", "")
+                        },
                         label = { Text("Placa", fontSize = 11.sp) },
                         modifier = Modifier.weight(1.2f),
                         singleLine = true,
@@ -634,26 +645,80 @@ fun FloatingOverlayContent(
                             unfocusedTextColor = Color(0xFF132033)
                         )
                     )
+
                     Spacer(modifier = Modifier.width(6.dp))
-                    OutlinedTextField(
-                        value = viaInput,
-                        onValueChange = { viaInput = it },
-                        label = { Text("Vía", fontSize = 11.sp) },
-                        modifier = Modifier.weight(0.8f),
-                        singleLine = true,
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = Color(0xFF0B5CAB),
-                            unfocusedBorderColor = Color(0xFFDFE5EE),
-                            focusedTextColor = Color(0xFF132033),
-                            unfocusedTextColor = Color(0xFF132033)
+
+                    if (allowedVias.isNotEmpty()) {
+                        Box(modifier = Modifier.weight(0.8f)) {
+                            OutlinedButton(
+                                onClick = { viaMenuExpanded = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(
+                                    text = viaInput.toIntOrNull()?.let { "Vía $it" }
+                                        ?: "Vía",
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowDown,
+                                    contentDescription = "Seleccionar vía",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = viaMenuExpanded,
+                                onDismissRequest = { viaMenuExpanded = false }
+                            ) {
+                                allowedVias.sorted().forEach { via ->
+                                    DropdownMenuItem(
+                                        text = { Text("Vía $via", fontSize = 12.sp) },
+                                        leadingIcon = {
+                                            if (viaInput == via.toString()) {
+                                                Icon(
+                                                    Icons.Default.CheckCircle,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            viaInput = via.toString()
+                                            mensajeVoz = null
+                                            viaMenuExpanded = false
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = viaInput,
+                            onValueChange = {
+                                if (it.all { ch -> ch.isDigit() }) {
+                                    viaInput = it
+                                }
+                            },
+                            label = { Text("Vía", fontSize = 11.sp) },
+                            modifier = Modifier.weight(0.8f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedBorderColor = Color(0xFF0B5CAB),
+                                unfocusedBorderColor = Color(0xFFDFE5EE),
+                                focusedTextColor = Color(0xFF132033),
+                                unfocusedTextColor = Color(0xFF132033)
+                            )
                         )
-                    )
+                    }
                 }
 
                 if (allowedVias.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Vías: ${allowedVias.sorted().joinToString(", ")}",
+                        text = "Vías SIGO: ${allowedVias.sorted().joinToString(", ")}",
                         fontSize = 9.sp,
                         color = Color(0xFF64748B)
                     )
