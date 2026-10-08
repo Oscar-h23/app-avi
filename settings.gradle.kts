@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "AVI"
+rootProject.name = "AVIX"
 
 include(":app")
