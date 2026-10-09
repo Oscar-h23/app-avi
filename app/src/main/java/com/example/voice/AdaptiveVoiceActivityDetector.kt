@@ -4,7 +4,7 @@ package com.example.voice
  * VAD adaptativo para la captura reforzada de AVIX.
  *
  * Trabaja con niveles dBFS por frame:
- * - calibra el piso de ruido durante ~400 ms;
+ * - calibra el piso de ruido durante ~200 ms;
  * - exige varios frames consecutivos sobre el umbral para iniciar voz;
  * - usa histéresis para no cortar palabras entre ruido intermitente;
  * - termina tras ~700 ms de silencio o por límites de seguridad.
@@ -13,7 +13,7 @@ package com.example.voice
  * que NoiseReducedAudioSource envía al SpeechRecognizer.
  */
 class AdaptiveVoiceActivityDetector(
-    private val calibrationFrames: Int = 20,
+    private val calibrationFrames: Int = 10,
     private val speechStartFrames: Int = 3,
     private val endSilenceFrames: Int = 35,
     private val minSpeechFrames: Int = 25,
