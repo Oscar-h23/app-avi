@@ -1,10 +1,10 @@
 package com.example.data.db
 
 import android.content.Context
-import android.database.sqlite.SQLiteDatabase
-import androidx.sqlite.db.framework.FrameworkSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.core.app.ApplicationProvider
-import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -26,17 +26,35 @@ class AviDatabaseMigrationTest {
             ApplicationProvider
                 .getApplicationContext<Context>()
 
-        val file =
-            File(
-                context.cacheDir,
-                "avix-migration-${System.nanoTime()}.db"
-            )
+        val dbName =
+            "avix-migration-${System.nanoTime()}.db"
+
+        val helper =
+            FrameworkSQLiteOpenHelperFactory()
+                .create(
+                    SupportSQLiteOpenHelper.Configuration
+                        .builder(context)
+                        .name(dbName)
+                        .callback(
+                            object :
+                                SupportSQLiteOpenHelper.Callback(1) {
+
+                                override fun onCreate(
+                                    db: SupportSQLiteDatabase
+                                ) = Unit
+
+                                override fun onUpgrade(
+                                    db: SupportSQLiteDatabase,
+                                    oldVersion: Int,
+                                    newVersion: Int
+                                ) = Unit
+                            }
+                        )
+                        .build()
+                )
 
         val sqlite =
-            SQLiteDatabase.openOrCreateDatabase(
-                file,
-                null
-            )
+            helper.writableDatabase
 
         try {
             sqlite.execSQL(
@@ -91,11 +109,7 @@ class AviDatabaseMigrationTest {
             )
 
             AviDatabase.MIGRATION_1_2
-                .migrate(
-                    FrameworkSQLiteDatabase(
-                        sqlite
-                    )
-                )
+                .migrate(sqlite)
 
             sqlite.rawQuery(
                 """
@@ -185,9 +199,9 @@ class AviDatabaseMigrationTest {
 
             assertTrue(indexFound)
         } finally {
-            sqlite.close()
+            helper.close()
             assertFalse(sqlite.isOpen)
-            file.delete()
+            context.deleteDatabase(dbName)
         }
     }
 }
