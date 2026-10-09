@@ -20,7 +20,89 @@ data class HistoryFilterResult(
     val validationMessage: String? = null
 )
 
+data class HistoryPage(
+    val items: List<Incident>,
+    val currentPage: Int,
+    val totalPages: Int,
+    val totalItems: Int,
+    val pageSize: Int
+) {
+    val fromItem: Int
+        get() =
+            if (totalItems == 0) {
+                0
+            } else {
+                ((currentPage - 1) * pageSize) + 1
+            }
+
+    val toItem: Int
+        get() =
+            if (totalItems == 0) {
+                0
+            } else {
+                minOf(
+                    currentPage * pageSize,
+                    totalItems
+                )
+            }
+}
+
 object HistoryFilters {
+
+    const val HISTORY_PAGE_SIZE = 12
+
+    fun paginate(
+        incidents: List<Incident>,
+        page: Int,
+        pageSize: Int = HISTORY_PAGE_SIZE
+    ): HistoryPage {
+        require(pageSize > 0) {
+            "El tamaño de página debe ser mayor que cero."
+        }
+
+        val totalItems =
+            incidents.size
+
+        val totalPages =
+            maxOf(
+                1,
+                (totalItems + pageSize - 1) /
+                    pageSize
+            )
+
+        val safePage =
+            page.coerceIn(
+                1,
+                totalPages
+            )
+
+        val startIndex =
+            (safePage - 1) * pageSize
+
+        val pageItems =
+            if (
+                totalItems == 0 ||
+                startIndex >= totalItems
+            ) {
+                emptyList()
+            } else {
+                incidents.subList(
+                    startIndex,
+                    minOf(
+                        startIndex + pageSize,
+                        totalItems
+                    )
+                )
+            }
+
+        return HistoryPage(
+            items = pageItems,
+            currentPage = safePage,
+            totalPages = totalPages,
+            totalItems = totalItems,
+            pageSize = pageSize
+        )
+    }
 
     fun apply(
         incidents: List<Incident>,
