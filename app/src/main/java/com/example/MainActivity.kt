@@ -2450,7 +2450,7 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
     }
 
     var isCheckingConnection by remember { mutableStateOf(false) }
-    var isBubbleRunning by remember { mutableStateOf(FloatingBubbleService.isRunning) }
+    val isBubbleRunning by FloatingBubbleService.runningState.collectAsState()
 
     Column(
         modifier = Modifier
@@ -2683,12 +2683,9 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
                                 } else {
                                     context.startService(intent)
                                 }
-                                isBubbleRunning = true
                             }
                         } else {
-                            val intent = Intent(context, FloatingBubbleService::class.java)
-                            context.stopService(intent)
-                            isBubbleRunning = false
+                            FloatingBubbleService.stop(context)
                         }
                     }
                 )
