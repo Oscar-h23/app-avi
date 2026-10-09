@@ -91,12 +91,14 @@ import com.example.MainActivity
 import com.example.data.IncidentRepository
 import com.example.model.ParsedCommand
 import com.example.parser.AviParser
+import com.example.ui.registration.PlateConfidenceHint
 import com.example.util.AviDateUtils
 import com.example.voice.AviSpeechManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 class FloatingBubbleService : Service() {
 
@@ -361,6 +363,15 @@ fun FloatingOverlayContent(
     var mensajeRegistro by remember { mutableStateOf<String?>(null) }
     var mensajeVoz by remember { mutableStateOf<String?>(null) }
     var viaMenuExpanded by remember { mutableStateOf(false) }
+    var operationId by remember {
+        mutableStateOf(UUID.randomUUID().toString())
+    }
+    var expectedOwner by remember {
+        mutableStateOf(repository.currentOwner())
+    }
+    var isSaving by remember {
+        mutableStateOf(false)
+    }
     var lastParsedCommand by remember {
         mutableStateOf(
             ParsedCommand(
@@ -376,8 +387,15 @@ fun FloatingOverlayContent(
     // Conectar el resultado de voz con los campos.
     // Si el primer intento quedó incompleto, el siguiente dictado puede corregir
     // solo acción, vía o placa sin perder los datos ya reconocidos.
-    DisposableEffect(speechManager, allowedVias) {
-        val listener: (String) -> Unit = { textoInterpretado ->
+    DisposableEffect(speechManager, allowedVias, isSaving) {
+        val listener: (String) -> Unit = listener@{ textoInterpretado ->
+            if (
+                !isExpandedFlow.value ||
+                isSaving
+            ) {
+                return@listener
+            }
+
             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
 
             val dictadoOriginal = speechManager
@@ -389,8 +407,7 @@ fun FloatingOverlayContent(
             val originalPrevio = lastParsedCommand.textoOriginal
 
             val parsedBase = if (
-                originalPrevio.isNotBlank() &&
-                !lastParsedCommand.valido
+                originalPrevio.isNotBlank()
             ) {
                 AviParser.mergeCorrection(
                     previous = lastParsedCommand,
@@ -450,8 +467,19 @@ fun FloatingOverlayContent(
                     onExpandToggle()
 
                     if (!voiceState.isListening) {
-                        fechaHoraEventoCapturada =
-                            AviDateUtils.nowLimaIso()
+                        if (
+                            placaInput.isBlank() &&
+                            viaInput.isBlank() &&
+                            accionInput.isBlank()
+                        ) {
+                            operationId =
+                                UUID.randomUUID().toString()
+                            expectedOwner =
+                                repository.currentOwner()
+                            fechaHoraEventoCapturada =
+                                AviDateUtils.nowLimaIso()
+                        }
+
                         mensajeRegistro = null
                         speechManager.startListening()
                     }
@@ -781,7 +809,28 @@ fun FloatingOverlayContent(
                 }
 
                 if (mensajeVoz != null) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    PlateConfidenceHint(
+                    plate = placaInput,
+                    confidence =
+                        voiceState
+                            .platePositionConfidence
+                            .mapIndexed {
+                                    index,
+                                    confidence ->
+                                if (
+                                    placaInput.getOrNull(index) !=
+                                    lastParsedCommand.placa.getOrNull(index)
+                                ) {
+                                    1f
+                                } else {
+                                    confidence
+                                }
+                            },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                     Text(
                         text = "⚠ $mensajeVoz",
                         color = Color(0xFFD64545),
@@ -814,41 +863,74 @@ fun FloatingOverlayContent(
                             finalAction = accionInput
                         )
 
+                        if (isSaving) {
+                            return@Button
+                        }
+
+                        isSaving = true
+                        mensajeRegistro = "Guardando en dispositivo..."
+                        mensajeVoz = null
+
                         scope.launch {
-                            val result = repository.registrarIncidencia(
-                                placa = placaInput.uppercase(),
-                                via = viaNum,
-                                accion = accionInput,
-                                fechaHoraEvento = fechaHoraEventoCapturada,
-                                textoReconocido = textoOriginalInput
-                            )
+                            val result =
+                                repository.registrarIncidencia(
+                                    placa = placaInput.uppercase(),
+                                    via = viaNum,
+                                    accion = accionInput,
+                                    fechaHoraEvento =
+                                        fechaHoraEventoCapturada,
+                                    textoReconocido =
+                                        textoOriginalInput,
+                                    operationId = operationId,
+                                    expectedOwner = expectedOwner
+                                        ?: repository.currentOwner()
+                                )
+
+                            isSaving = false
 
                             if (result.isSuccess) {
                                 mensajeVoz = null
-                                mensajeRegistro = "✓ Registrado y enviado a SIGO"
-                                kotlinx.coroutines.delay(1200)
+                                mensajeRegistro =
+                                    "✓ Guardado en dispositivo"
+                                kotlinx.coroutines.delay(900)
                                 mensajeRegistro = null
 
-                                // Limpiar contexto para que el siguiente vehículo empiece desde cero.
+                                // El siguiente vehículo recibe un UUID nuevo.
                                 lastParsedCommand = ParsedCommand()
                                 accionInput = ""
                                 viaInput = ""
                                 placaInput = ""
                                 textoOriginalInput = ""
+                                operationId =
+                                    UUID.randomUUID().toString()
+                                expectedOwner =
+                                    repository.currentOwner()
+                                fechaHoraEventoCapturada =
+                                    AviDateUtils.nowLimaIso()
 
                                 onExpandToggle()
                             } else {
                                 mensajeRegistro = null
-                                mensajeVoz = result.exceptionOrNull()?.message
-                                    ?: "No se pudo registrar el evento."
+                                mensajeVoz =
+                                    result.exceptionOrNull()?.message
+                                        ?: "No se pudo guardar el evento."
                             }
                         }
                     },
-                    enabled = AviParser.isValidPeruPlate(
-                            placaInput.uppercase().replace(" ", "").replace("-", "")
+                    enabled = !isSaving &&
+                        AviParser.isValidPeruPlate(
+                            placaInput.uppercase()
+                                .replace(" ", "")
+                                .replace("-", "")
                         ) &&
-                            viaInput.toIntOrNull()?.let { repository.isViaPermitida(it) } == true &&
-                            accionInput in listOf("FUGA", "DERIVADO"),
+                        viaInput.toIntOrNull()
+                            ?.let {
+                                repository.isViaPermitida(it)
+                            } == true &&
+                        accionInput in listOf(
+                            "FUGA",
+                            "DERIVADO"
+                        ),
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = Color(0xFF0B5CAB)
@@ -863,7 +945,11 @@ fun FloatingOverlayContent(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "REGISTRAR EN SIGO",
+                        text = if (isSaving) {
+                            "GUARDANDO..."
+                        } else {
+                            "GUARDAR REGISTRO"
+                        },
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp
