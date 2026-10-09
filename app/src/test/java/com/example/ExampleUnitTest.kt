@@ -768,6 +768,39 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testPlacaX1Z505ConTsuru() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa X Ray primero Tsuru quinto negativo quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("X1Z505", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaX1Z505ConSuru() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa X Ray primero Suru quinto negativo quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("X1Z505", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testPlacaX1Z505ConZuru() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa X Ray primero Zuru quinto negativo quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("X1Z505", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
