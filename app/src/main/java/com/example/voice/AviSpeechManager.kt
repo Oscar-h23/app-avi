@@ -242,11 +242,12 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 val confidenceScores = results
                     ?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
 
-                val text = AviParser.selectBestHypothesis(
+                val fusion = AviParser.fuseHypotheses(
                     candidates = matches,
                     confidenceScores = confidenceScores,
                     allowedVias = allowedVias
                 )
+                val text = fusion.text
 
                 if (text.isNotBlank()) {
                     val analysis = AviParser.analyzeCommand(text, allowedVias)
@@ -255,10 +256,13 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     _voiceState.value = _voiceState.value.copy(
                         isListening = false,
                         stage = DiagnosticStage.STAGE_4,
-                        stageDescription = if (analysis.parsed.valido) {
-                            "4/4 Comando completo y validado."
-                        } else {
-                            analysis.prompt
+                        stageDescription = when {
+                            analysis.parsed.valido && fusion.fused ->
+                                "4/4 Comando validado fusionando ${fusion.sourceCount} alternativas."
+                            analysis.parsed.valido ->
+                                "4/4 Comando completo y validado."
+                            else ->
+                                analysis.prompt
                         },
                         recognizedText = text,
                         retryCount = 0,
