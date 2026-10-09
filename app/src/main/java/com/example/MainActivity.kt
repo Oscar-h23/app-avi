@@ -501,6 +501,7 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
     val connectionState by repository.connectionState.collectAsState()
     val pendientesCount by repository.pendientesCountFlow.collectAsState(initial = 0)
     val allowedVias by repository.allowedVias.collectAsState()
+    val bubbleRunning by FloatingBubbleService.runningState.collectAsState()
     val speechManager = remember { AviSpeechManager.getInstance(context) }
 
     LaunchedEffect(allowedVias) {
@@ -522,15 +523,6 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
         )
     }
     var fechaHoraEventoCapturada by remember { mutableStateOf(AviDateUtils.nowLimaIso()) }
-
-    // Comprobar permiso de overlay para la burbuja
-    var hasOverlayPermission by remember {
-        mutableStateOf(
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                Settings.canDrawOverlays(context)
-            } else true
-        )
-    }
 
     // BackHandler para navegación natural en Compose
     BackHandler(enabled = currentTab != AviNavigationTab.INICIO) {
@@ -612,15 +604,11 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                                 Toast.makeText(context, "Conceda permiso para superponer burbuja AVIX", Toast.LENGTH_LONG).show()
                             } else {
                                 val intent = Intent(context, FloatingBubbleService::class.java)
-                                if (FloatingBubbleService.isRunning) {
-                                    context.stopService(intent)
+                                if (bubbleRunning) {
+                                    FloatingBubbleService.stop(context)
                                     Toast.makeText(context, "Burbuja AVIX desactivada", Toast.LENGTH_SHORT).show()
                                 } else {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                        context.startForegroundService(intent)
-                                    } else {
-                                        context.startService(intent)
-                                    }
+                                    FloatingBubbleService.start(context)
                                     Toast.makeText(context, "Burbuja flotante AVIX activada encima de otras apps", Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -629,7 +617,7 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         Icon(
                             imageVector = Icons.Default.Layers,
                             contentDescription = "Burbuja Flotante",
-                            tint = if (FloatingBubbleService.isRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            tint = if (bubbleRunning) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
