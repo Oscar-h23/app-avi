@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
-import android.media.audiofx.NoiseSuppressor
 import android.os.ParcelFileDescriptor
 import java.io.FileOutputStream
 import java.util.ArrayDeque
@@ -18,9 +17,10 @@ import kotlin.math.sqrt
 /**
  * Captura PCM orientada a voz para ambientes ruidosos.
  *
- * Usa VOICE_RECOGNITION para aprovechar el DSP del dispositivo y activa
- * NoiseSuppressor cuando está disponible. Antes de enviar audio al
- * SpeechRecognizer, calibra el ruido ambiente y usa VAD adaptativo para:
+ * Usa VOICE_RECOGNITION como fuente orientada al reconocimiento y evita
+ * aplicar NoiseSuppressor manualmente para no degradar fonemas cortos de
+ * letras y números. Antes de enviar audio al SpeechRecognizer, calibra el
+ * ruido ambiente y usa VAD adaptativo para:
  *
  * - esperar voz real en lugar de transmitir ruido continuamente;
  * - conservar un pequeño pre-roll para no cortar la primera sílaba;
@@ -39,7 +39,6 @@ class NoiseReducedAudioSource {
     private val running = AtomicBoolean(false)
     private var executor: ExecutorService? = null
     private var audioRecord: AudioRecord? = null
-    private var noiseSuppressor: NoiseSuppressor? = null
     private var readSide: ParcelFileDescriptor? = null
     private var writeSide: ParcelFileDescriptor? = null
 
@@ -81,28 +80,14 @@ class NoiseReducedAudioSource {
             return null
         }
 
-        val suppressor = try {
-            if (NoiseSuppressor.isAvailable()) {
-                NoiseSuppressor.create(recorder.audioSessionId)?.apply {
-                    enabled = true
-                }
-            } else {
-                null
-            }
-        } catch (_: Throwable) {
-            null
-        }
-
         val pipe = try {
             ParcelFileDescriptor.createPipe()
         } catch (_: Throwable) {
-            suppressor?.release()
             recorder.release()
             return null
         }
 
         audioRecord = recorder
-        noiseSuppressor = suppressor
         readSide = pipe[0]
         writeSide = pipe[1]
 
@@ -133,7 +118,7 @@ class NoiseReducedAudioSource {
 
                 Session(
                     readDescriptor = pipe[0],
-                    noiseSuppressorEnabled = suppressor?.enabled == true
+                    noiseSuppressorEnabled = false
                 )
             }
         } catch (_: Throwable) {
@@ -314,11 +299,6 @@ class NoiseReducedAudioSource {
         }
 
         try {
-            noiseSuppressor?.release()
-        } catch (_: Throwable) {
-        }
-
-        try {
             audioRecord?.release()
         } catch (_: Throwable) {
         }
@@ -327,7 +307,6 @@ class NoiseReducedAudioSource {
 
         executor = null
         audioRecord = null
-        noiseSuppressor = null
         readSide = null
         writeSide = null
     }
