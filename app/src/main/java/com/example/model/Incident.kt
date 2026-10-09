@@ -49,6 +49,15 @@ data class RegistroSigoRequest(
 )
 
 @JsonClass(generateAdapter = true)
+data class RegistroSigoUpdateRequest(
+    val placa: String,
+    val via: Int,
+    val accion: String,
+    val fechaHoraEvento: String,
+    val textoReconocido: String
+)
+
+@JsonClass(generateAdapter = true)
 data class RegistroSigoResponse(
     val id: String,
     val placa: String? = null,
