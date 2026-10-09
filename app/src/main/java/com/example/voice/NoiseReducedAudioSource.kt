@@ -7,19 +7,24 @@ import android.media.MediaRecorder
 import android.media.audiofx.NoiseSuppressor
 import android.os.ParcelFileDescriptor
 import java.io.FileOutputStream
+import java.util.ArrayDeque
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.math.log10
 import kotlin.math.max
+import kotlin.math.sqrt
 
 /**
  * Captura PCM orientada a voz para ambientes ruidosos.
  *
- * Usa VOICE_RECOGNITION para permitir que el fabricante aplique su cadena DSP
- * y además intenta habilitar NoiseSuppressor sobre la misma sesión de AudioRecord.
+ * Usa VOICE_RECOGNITION para aprovechar el DSP del dispositivo y activa
+ * NoiseSuppressor cuando está disponible. Antes de enviar audio al
+ * SpeechRecognizer, calibra el ruido ambiente y usa VAD adaptativo para:
  *
- * El audio procesado se escribe a un pipe para poder inyectarlo a SpeechRecognizer
- * mediante RecognizerIntent.EXTRA_AUDIO_SOURCE en Android 13+.
+ * - esperar voz real en lugar de transmitir ruido continuamente;
+ * - conservar un pequeño pre-roll para no cortar la primera sílaba;
+ * - cerrar el pipe al detectar silencio final y producir EOF de forma fiable.
  */
 class NoiseReducedAudioSource {
 
@@ -40,7 +45,9 @@ class NoiseReducedAudioSource {
 
     @SuppressLint("MissingPermission")
     @Synchronized
-    fun start(): Session? {
+    fun start(
+        onVadState: ((AdaptiveVoiceActivityDetector.State) -> Unit)? = null
+    ): Session? {
         release()
 
         val minBuffer = AudioRecord.getMinBufferSize(
@@ -51,7 +58,7 @@ class NoiseReducedAudioSource {
 
         if (minBuffer <= 0) return null
 
-        val bufferSize = max(minBuffer * 2, 4096)
+        val recorderBufferSize = max(minBuffer * 2, 4096)
 
         val recorder = try {
             AudioRecord.Builder()
@@ -63,7 +70,7 @@ class NoiseReducedAudioSource {
                         .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
                         .build()
                 )
-                .setBufferSizeInBytes(bufferSize)
+                .setBufferSizeInBytes(recorderBufferSize)
                 .build()
         } catch (_: Throwable) {
             return null
@@ -101,39 +108,26 @@ class NoiseReducedAudioSource {
 
         return try {
             recorder.startRecording()
-            if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
+
+            if (
+                recorder.recordingState !=
+                AudioRecord.RECORDSTATE_RECORDING
+            ) {
                 release()
                 null
             } else {
                 running.set(true)
+
                 val localWrite = pipe[1]
                 val localRecorder = recorder
 
                 executor = Executors.newSingleThreadExecutor().also { worker ->
                     worker.execute {
-                        val buffer = ByteArray(bufferSize)
-
-                        try {
-                            FileOutputStream(localWrite.fileDescriptor).use { output ->
-                                while (running.get()) {
-                                    val read = localRecorder.read(
-                                        buffer,
-                                        0,
-                                        buffer.size,
-                                        AudioRecord.READ_BLOCKING
-                                    )
-
-                                    if (read > 0) {
-                                        output.write(buffer, 0, read)
-                                    } else if (read < 0) {
-                                        break
-                                    }
-                                }
-                                output.flush()
-                            }
-                        } catch (_: Throwable) {
-                            // El pipe se cierra deliberadamente al detener la sesión.
-                        }
+                        captureWithAdaptiveVad(
+                            recorder = localRecorder,
+                            writeDescriptor = localWrite,
+                            onVadState = onVadState
+                        )
                     }
                 }
 
@@ -146,6 +140,137 @@ class NoiseReducedAudioSource {
             release()
             null
         }
+    }
+
+    private fun captureWithAdaptiveVad(
+        recorder: AudioRecord,
+        writeDescriptor: ParcelFileDescriptor,
+        onVadState: ((AdaptiveVoiceActivityDetector.State) -> Unit)?
+    ) {
+        val vad = AdaptiveVoiceActivityDetector()
+        val frame = ByteArray(FRAME_BYTES)
+        val preRoll = ArrayDeque<ByteArray>()
+        var previousPhase:
+            AdaptiveVoiceActivityDetector.Phase? = null
+
+        try {
+            FileOutputStream(writeDescriptor.fileDescriptor).use { output ->
+                while (running.get()) {
+                    val read = recorder.read(
+                        frame,
+                        0,
+                        frame.size,
+                        AudioRecord.READ_BLOCKING
+                    )
+
+                    if (read <= 0) {
+                        if (read < 0) break
+                        continue
+                    }
+
+                    val levelDb = calculateDbFs(frame, read)
+                    val state = vad.process(levelDb)
+
+                    if (
+                        state.phase != previousPhase ||
+                        state.speechStarted ||
+                        state.speechEnded ||
+                        state.timedOut
+                    ) {
+                        onVadState?.invoke(state)
+                    }
+
+                    when (state.phase) {
+                        AdaptiveVoiceActivityDetector.Phase.CALIBRATING -> {
+                            preRoll.clear()
+                        }
+
+                        AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH -> {
+                            preRoll.addLast(frame.copyOf(read))
+
+                            while (preRoll.size > PRE_ROLL_FRAMES) {
+                                preRoll.removeFirst()
+                            }
+                        }
+
+                        AdaptiveVoiceActivityDetector.Phase.SPEECH -> {
+                            if (
+                                previousPhase !=
+                                AdaptiveVoiceActivityDetector.Phase.SPEECH
+                            ) {
+                                while (preRoll.isNotEmpty()) {
+                                    val buffered = preRoll.removeFirst()
+                                    output.write(
+                                        buffered,
+                                        0,
+                                        buffered.size
+                                    )
+                                }
+                            }
+
+                            output.write(frame, 0, read)
+                        }
+
+                        AdaptiveVoiceActivityDetector.Phase.FINISHED -> {
+                            break
+                        }
+                    }
+
+                    previousPhase = state.phase
+                }
+
+                output.flush()
+            }
+        } catch (_: Throwable) {
+            // El pipe puede cerrarse deliberadamente desde finishInput/release.
+        } finally {
+            running.set(false)
+
+            try {
+                recorder.stop()
+            } catch (_: Throwable) {
+            }
+
+            // FileOutputStream.use() ya cerró el extremo escritor y señaló EOF.
+        }
+    }
+
+    private fun calculateDbFs(
+        buffer: ByteArray,
+        length: Int
+    ): Float {
+        if (length < 2) return MIN_DB_FS
+
+        var index = 0
+        var samples = 0
+        var sumSquares = 0.0
+
+        while (index + 1 < length) {
+            val low = buffer[index].toInt() and 0xFF
+            val high = buffer[index + 1].toInt()
+            var sample = (high shl 8) or low
+
+            if (sample > Short.MAX_VALUE) {
+                sample -= 65_536
+            }
+
+            val normalized = sample.toDouble()
+            sumSquares += normalized * normalized
+            samples++
+            index += 2
+        }
+
+        if (samples == 0) return MIN_DB_FS
+
+        val rms = sqrt(sumSquares / samples)
+        if (rms <= 1.0) return MIN_DB_FS
+
+        val dbFs =
+            20.0 * log10(rms / Short.MAX_VALUE.toDouble())
+
+        return dbFs
+            .toFloat()
+            .coerceIn(MIN_DB_FS, 0f)
     }
 
     /**
@@ -165,6 +290,7 @@ class NoiseReducedAudioSource {
             writeSide?.close()
         } catch (_: Throwable) {
         }
+
         writeSide = null
     }
 
@@ -208,5 +334,11 @@ class NoiseReducedAudioSource {
 
     companion object {
         const val SAMPLE_RATE = 16_000
+
+        // 20 ms de PCM mono 16-bit a 16 kHz:
+        // 16 000 * 0.020 * 2 = 640 bytes.
+        private const val FRAME_BYTES = 640
+        private const val PRE_ROLL_FRAMES = 10
+        private const val MIN_DB_FS = -90f
     }
 }
