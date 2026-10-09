@@ -90,7 +90,10 @@ data class VoiceState(
     val isListening: Boolean = false,
     val stage: DiagnosticStage = DiagnosticStage.IDLE,
     val stageDescription: String = "Presione DICTAR REGISTRO o use Registro Manual",
+    // Primera hipótesis cruda devuelta por Android. No se corrige ni reconstruye.
     val recognizedText: String = "",
+    // Resultado interno después de ranking, contexto y fusión de alternativas.
+    val interpretedText: String = "",
     val rmsLevel: Float = 0f,
     val errorMessage: String? = null,
     val retryCount: Int = 0
