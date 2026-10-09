@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioFormat
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -60,6 +62,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     )
 
     private var speechRecognizer: SpeechRecognizer? = null
+    private var usingOnDeviceRecognizer = false
     private val noiseReducedAudioSource = NoiseReducedAudioSource()
     private var enhancedAudioActive = false
     private var currentAttemptUsesEnhancedAudio = false
@@ -338,20 +341,61 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         }
     }
 
-    private fun initRecognizer() {
+    private fun hasValidatedInternet(): Boolean {
+        val connectivityManager =
+            appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                ?: return false
+
+        val activeNetwork = connectivityManager.activeNetwork ?: return false
+        val capabilities =
+            connectivityManager.getNetworkCapabilities(activeNetwork) ?: return false
+
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    }
+
+    private fun canUseOnDeviceRecognition(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            SpeechRecognizer.isOnDeviceRecognitionAvailable(appContext)
+    }
+
+    private fun initRecognizer(
+        preferOnDevice: Boolean = !hasValidatedInternet()
+    ) {
         try {
-            isRecognizerAvailable = SpeechRecognizer.isRecognitionAvailable(appContext)
+            val useOnDevice =
+                preferOnDevice && canUseOnDeviceRecognition()
+
+            isRecognizerAvailable =
+                useOnDevice ||
+                    SpeechRecognizer.isRecognitionAvailable(appContext)
+
             if (isRecognizerAvailable) {
                 speechRecognizer?.destroy()
-                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(appContext)
+                speechRecognizer =
+                    if (useOnDevice) {
+                        SpeechRecognizer.createOnDeviceSpeechRecognizer(appContext)
+                    } else {
+                        SpeechRecognizer.createSpeechRecognizer(appContext)
+                    }
+
+                usingOnDeviceRecognizer = useOnDevice
                 setupRecognitionListener()
             } else {
+                usingOnDeviceRecognizer = false
                 _voiceState.value = _voiceState.value.copy(
-                    errorMessage = "Servicio de reconocimiento de voz no disponible."
+                    errorMessage =
+                        if (!hasValidatedInternet()) {
+                            "Reconocimiento offline no disponible en este dispositivo. " +
+                                "Descarga el paquete de voz español (Perú) en los ajustes de reconocimiento."
+                        } else {
+                            "Servicio de reconocimiento de voz no disponible."
+                        }
                 )
             }
         } catch (e: Exception) {
             isRecognizerAvailable = false
+            usingOnDeviceRecognizer = false
             _voiceState.value = _voiceState.value.copy(
                 errorMessage = "Error al iniciar reconocedor: ${e.localizedMessage}"
             )
@@ -845,8 +889,31 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     }
                 }
 
+                val networkAvailable = hasValidatedInternet()
+                val onDeviceAvailable = canUseOnDeviceRecognition()
+                val shouldUseOnDevice =
+                    !networkAvailable && onDeviceAvailable
+
+                if (
+                    speechRecognizer == null ||
+                    usingOnDeviceRecognizer != shouldUseOnDevice
+                ) {
+                    initRecognizer(
+                        preferOnDevice = shouldUseOnDevice
+                    )
+                }
+
                 if (speechRecognizer == null) {
-                    initRecognizer()
+                    _voiceState.value = _voiceState.value.copy(
+                        isListening = false,
+                        errorMessage =
+                            if (!networkAvailable) {
+                                "No hay un motor de voz offline disponible en el dispositivo."
+                            } else {
+                                "No se pudo iniciar el servicio de reconocimiento de voz."
+                            }
+                    )
+                    return@post
                 }
 
                 val enhancedSession = if (
@@ -877,6 +944,10 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     )
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                    putExtra(
+                        RecognizerIntent.EXTRA_PREFER_OFFLINE,
+                        !networkAvailable || usingOnDeviceRecognizer
+                    )
 
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                         putStringArrayListExtra(
