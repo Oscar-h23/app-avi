@@ -13,6 +13,7 @@ import com.example.model.Incident
 import com.example.model.LoginResponse
 import com.example.model.RegistroSigoRequest
 import com.example.model.RegistroSigoResponse
+import com.example.model.RegistroSigoUpdateRequest
 import com.example.model.UsuarioDto
 import com.example.worker.SyncRegistroWorker
 import com.squareup.moshi.JsonDataException
@@ -539,6 +540,154 @@ class IncidentRepository private constructor(context: Context) {
                     }
                 }
                 todosExitosos
+            }
+        }
+    }
+
+    /**
+     * Edita un registro desde el historial.
+     *
+     * - Si ya está sincronizado, SIGO-BACK se actualiza primero y Room solo
+     *   cambia cuando el servidor confirma.
+     * - Si aún está pendiente, se actualiza localmente y queda listo para
+     *   sincronizar con los nuevos valores.
+     */
+    suspend fun actualizarIncidencia(
+        id: String,
+        placa: String,
+        via: Int?,
+        accion: String
+    ): Result<Incident> {
+        return withContext(Dispatchers.IO) {
+            val actual = dao.getById(id)
+                ?: return@withContext Result.failure(
+                    IllegalArgumentException("Registro no encontrado.")
+                )
+
+            val placaNormalizada = placa
+                .uppercase()
+                .replace("-", "")
+                .replace(" ", "")
+                .trim()
+
+            val accionNormalizada = accion.uppercase().trim()
+
+            if (!placaNormalizada.matches(Regex("[A-Z][A-Z0-9]{2}\\d{3}"))) {
+                return@withContext Result.failure(
+                    IllegalArgumentException(
+                        "Formato de placa inválido. Se espera 1 letra, 2 caracteres alfanuméricos y 3 números."
+                    )
+                )
+            }
+
+            if (via == null || via <= 0) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("Seleccione una vía válida.")
+                )
+            }
+
+            if (!isViaPermitida(via)) {
+                return@withContext Result.failure(
+                    IllegalArgumentException(
+                        "La vía $via no está habilitada para esta plaza."
+                    )
+                )
+            }
+
+            if (accionNormalizada !in setOf("FUGA", "DERIVADO")) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("La acción debe ser FUGA o DERIVADO.")
+                )
+            }
+
+            val edited = actual.copy(
+                placa = placaNormalizada,
+                via = via,
+                accion = accionNormalizada,
+                ultimoError = null
+            )
+
+            val wasSynced =
+                actual.estadoSincronizacion == EstadoSincronizacion.SINCRONIZADO.name
+
+            if (!wasSynced) {
+                val local = edited.copy(
+                    estadoSincronizacion = EstadoSincronizacion.PENDIENTE.name
+                )
+                dao.update(local)
+                SyncRegistroWorker.enqueueImmediateSync(appContext)
+                return@withContext Result.success(local.toDomain())
+            }
+
+            if (sessionManager.getToken().isNullOrBlank()) {
+                return@withContext Result.failure(
+                    IllegalStateException(
+                        "La sesión no está activa. Inicie sesión para editar un registro sincronizado."
+                    )
+                )
+            }
+
+            try {
+                val response = sigoApi.actualizarEvento(
+                    id = id,
+                    request = RegistroSigoUpdateRequest(
+                        placa = placaNormalizada,
+                        via = via,
+                        accion = accionNormalizada,
+                        fechaHoraEvento = actual.fechaHoraEvento,
+                        textoReconocido = actual.textoReconocido
+                    )
+                )
+
+                when {
+                    response.isSuccessful -> {
+                        val confirmed = edited.copy(
+                            estadoSincronizacion = EstadoSincronizacion.SINCRONIZADO.name,
+                            ultimoError = null
+                        )
+                        dao.update(confirmed)
+                        _connectionState.value = ApiConnectionState.ONLINE
+                        Result.success(confirmed.toDomain())
+                    }
+
+                    response.code() == 401 -> {
+                        _sessionExpiredEvent.tryEmit(
+                            "Su sesión ha expirado. Inicie sesión nuevamente."
+                        )
+                        Result.failure(
+                            IllegalStateException(
+                                "Sesión expirada al editar el registro (HTTP 401)."
+                            )
+                        )
+                    }
+
+                    response.code() == 403 -> Result.failure(
+                        IllegalStateException(
+                            "No tiene permiso para editar este registro (HTTP 403)."
+                        )
+                    )
+
+                    response.code() == 404 -> Result.failure(
+                        IllegalStateException(
+                            "El registro no existe en SIGO (HTTP 404)."
+                        )
+                    )
+
+                    response.code() == 400 -> Result.failure(
+                        IllegalStateException(
+                            "SIGO rechazó los datos editados (HTTP 400)."
+                        )
+                    )
+
+                    else -> Result.failure(
+                        IllegalStateException(
+                            "No se pudo editar en SIGO (HTTP ${response.code()}): ${response.message()}"
+                        )
+                    )
+                }
+            } catch (e: Throwable) {
+                _connectionState.value = ApiConnectionState.OFFLINE
+                Result.failure(Exception(clasificarErrorTecnico(e)))
             }
         }
     }
