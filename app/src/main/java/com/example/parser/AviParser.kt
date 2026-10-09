@@ -21,6 +21,16 @@ data class AviCommandAnalysis(
     val prompt: String
 )
 
+data class HypothesisFusionResult(
+    val text: String,
+    val parsed: ParsedCommand,
+    val fused: Boolean,
+    val sourceCount: Int,
+    val actionConfidence: Float,
+    val viaConfidence: Float,
+    val platePositionConfidence: List<Float>
+)
+
 object AviParser {
 
     private val phoneticAlphabet = mapOf(
@@ -567,6 +577,226 @@ object AviParser {
         score += clean.split(" ").count { it in qTokens } * 3
 
         return score
+    }
+
+    private fun <T> addVote(
+        votes: MutableMap<T, Float>,
+        value: T,
+        weight: Float
+    ) {
+        votes[value] = (votes[value] ?: 0f) + weight
+    }
+
+    private fun <T> chooseVote(
+        votes: Map<T, Float>
+    ): Pair<T?, Float> {
+        if (votes.isEmpty()) return null to 0f
+
+        val total = votes.values.sum().coerceAtLeast(0.0001f)
+        val winner = votes.maxByOrNull { it.value } ?: return null to 0f
+        return winner.key to (winner.value / total)
+    }
+
+    /**
+     * Fusiona hasta cinco hipótesis del SpeechRecognizer en lugar de obligar
+     * a que una sola frase gane completa.
+     *
+     * - Acción: voto ponderado FUGA / DERIVADO.
+     * - Vía: voto ponderado y filtrado por el catálogo real de SIGO.
+     * - Placa: voto independiente por cada una de las seis posiciones.
+     *
+     * Si la fusión no produce algo al menos tan coherente como la mejor
+     * hipótesis individual, se conserva selectBestHypothesis como fallback.
+     */
+    fun fuseHypotheses(
+        candidates: List<String>,
+        confidenceScores: FloatArray? = null,
+        allowedVias: Set<Int> = emptySet()
+    ): HypothesisFusionResult {
+        val usable = candidates
+            .filter { it.isNotBlank() }
+            .take(5)
+
+        if (usable.isEmpty()) {
+            val empty = parse("", allowedVias)
+            return HypothesisFusionResult(
+                text = "",
+                parsed = empty,
+                fused = false,
+                sourceCount = 0,
+                actionConfidence = 0f,
+                viaConfidence = 0f,
+                platePositionConfidence = List(6) { 0f }
+            )
+        }
+
+        val bestText = selectBestHypothesis(
+            candidates = usable,
+            confidenceScores = confidenceScores,
+            allowedVias = allowedVias
+        )
+        val bestParsed = parse(bestText, allowedVias)
+        val bestAnalysis = analyzeCommand(bestText, allowedVias)
+
+        val actionVotes = mutableMapOf<String, Float>()
+        val viaVotes = mutableMapOf<Int, Float>()
+        val plateVotes = List(6) { mutableMapOf<Char, Float>() }
+
+        usable.forEachIndexed { index, candidate ->
+            val parsed = parse(candidate, allowedVias)
+            val analysis = analyzeCommand(candidate, allowedVias)
+
+            val confidence = confidenceScores
+                ?.getOrNull(index)
+                ?.takeIf { it >= 0f }
+                ?.coerceIn(0f, 1f)
+                ?: 0.55f
+
+            var baseWeight =
+                1f +
+                    (confidence * 1.6f) +
+                    ((usable.size - index) * 0.05f)
+
+            if (parsed.valido) baseWeight += 0.35f
+
+            if (
+                analysis.actionDetected &&
+                parsed.accion in setOf("FUGA", "DERIVADO")
+            ) {
+                addVote(
+                    actionVotes,
+                    parsed.accion,
+                    baseWeight + 0.25f
+                )
+            }
+
+            val via = parsed.via
+            if (
+                analysis.viaMarkerDetected &&
+                via != null &&
+                via > 0 &&
+                (allowedVias.isEmpty() || via in allowedVias)
+            ) {
+                addVote(
+                    viaVotes,
+                    via,
+                    baseWeight + if (allowedVias.isNotEmpty()) 0.55f else 0.25f
+                )
+            }
+
+            val plate = parsed.placa
+                .uppercase(Locale.ROOT)
+                .replace("-", "")
+                .replace(" ", "")
+
+            if (analysis.plateMarkerDetected && plate.isNotBlank()) {
+                val fullPlateBonus =
+                    if (isValidPeruPlate(plate)) 0.45f else 0f
+
+                for (position in 0..5) {
+                    val ch = plate.getOrNull(position) ?: continue
+                    val validForPosition = when (position) {
+                        0 -> ch.isLetter()
+                        1, 2 -> ch.isLetterOrDigit()
+                        else -> ch.isDigit()
+                    }
+
+                    if (validForPosition) {
+                        addVote(
+                            plateVotes[position],
+                            ch,
+                            baseWeight + fullPlateBonus
+                        )
+                    }
+                }
+            }
+        }
+
+        val (actionWinner, actionConfidence) = chooseVote(actionVotes)
+        val (viaWinner, viaConfidence) = chooseVote(viaVotes)
+
+        val plateWinners = mutableListOf<Char?>()
+        val plateConfidences = mutableListOf<Float>()
+
+        for (position in 0..5) {
+            val (winner, confidence) = chooseVote(plateVotes[position])
+            plateWinners += winner
+            plateConfidences += confidence
+        }
+
+        val votedPlate = if (plateWinners.all { it != null }) {
+            plateWinners.joinToString("") { it.toString() }
+        } else {
+            ""
+        }
+
+        val fallbackAction =
+            if (bestAnalysis.actionDetected) bestParsed.accion else null
+        val fallbackVia =
+            if (bestAnalysis.viaMarkerDetected) bestParsed.via else null
+        val fallbackPlate =
+            if (bestAnalysis.plateMarkerDetected) bestParsed.placa else ""
+
+        val finalAction = actionWinner ?: fallbackAction
+        val finalVia = viaWinner ?: fallbackVia
+        val finalPlate = when {
+            isValidPeruPlate(votedPlate) -> votedPlate
+            fallbackPlate.isNotBlank() -> fallbackPlate
+            else -> votedPlate
+        }
+
+        val pieces = mutableListOf<String>()
+        if (finalAction != null) {
+            pieces += finalAction.lowercase(Locale.ROOT)
+        }
+        if (finalVia != null) {
+            pieces += "vía $finalVia"
+        }
+        if (finalPlate.isNotBlank()) {
+            pieces += "placa $finalPlate"
+        }
+
+        val fusedText = pieces.joinToString(" ").trim()
+        val fusedParsed = parse(fusedText, allowedVias)
+
+        fun recognizedFieldCount(
+            text: String,
+            parsed: ParsedCommand
+        ): Int {
+            val analysis = analyzeCommand(text, allowedVias)
+            var count = 0
+            if (analysis.actionDetected) count++
+            if (analysis.viaMarkerDetected && parsed.via != null) count++
+            if (analysis.plateMarkerDetected && parsed.placa.isNotBlank()) count++
+            return count
+        }
+
+        val fusedFieldCount = recognizedFieldCount(fusedText, fusedParsed)
+        val bestFieldCount = recognizedFieldCount(bestText, bestParsed)
+
+        val shouldUseFusion =
+            usable.size > 1 &&
+                fusedText.isNotBlank() &&
+                (
+                    fusedParsed.valido ||
+                        (!bestParsed.valido && fusedFieldCount >= bestFieldCount) ||
+                        fusedFieldCount > bestFieldCount
+                )
+
+        val selectedText = if (shouldUseFusion) fusedText else bestText
+        val selectedParsed = if (shouldUseFusion) fusedParsed else bestParsed
+
+        return HypothesisFusionResult(
+            text = selectedText,
+            parsed = selectedParsed.copy(
+                textoOriginal = usable.joinToString(" || ")
+            ),
+            fused = shouldUseFusion,
+            sourceCount = usable.size,
+            actionConfidence = actionConfidence,
+            viaConfidence = viaConfidence,
+            platePositionConfidence = plateConfidences
+        )
     }
 
     fun selectBestHypothesis(
