@@ -62,7 +62,10 @@ object AviParser {
         "equisray" to "X", "equis ray" to "X", "equis rey" to "X",
         "ray" to "X", "rey" to "X", "equis" to "X",
         "yankee" to "Y", "yanki" to "Y", "yanqui" to "Y",
-        "zulu" to "Z", "sulu" to "Z",
+        // Variantes que el ASR puede producir al escuchar "Zulu".
+        // Se interpretan como Z únicamente dentro del bloque de placa.
+        "zulu" to "Z", "sulu" to "Z", "tsuru" to "Z",
+        "suru" to "Z", "zuru" to "Z",
         "a" to "A",
         "be" to "B", "ve grande" to "B", "be alta" to "B",
         "ce" to "C",
