@@ -145,10 +145,10 @@ class IncidentRepositoryTest {
 
                 // La segunda pulsación ocurre antes de que termine la primera.
                 draft.submit(
-                    repository = repository,
+                    repository = gatedRepository,
                     command = command,
                     expectedOwner =
-                        repository.currentOwner()
+                        gatedRepository.currentOwner()
                 ) {
                     callbacks++
                 }
