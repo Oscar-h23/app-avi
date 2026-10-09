@@ -18,6 +18,7 @@ import com.example.model.ParsedCommand
 import com.example.model.VoiceState
 import com.example.parser.AviParser
 import com.example.parser.AviCommandStage
+import com.example.parser.HypothesisFusionResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -61,7 +62,12 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     private var speechRecognizer: SpeechRecognizer? = null
     private val noiseReducedAudioSource = NoiseReducedAudioSource()
     private var enhancedAudioActive = false
-    private var enhancedFallbackAttempted = false
+    private var currentAttemptUsesEnhancedAudio = false
+    private var automaticEnhancedRetryAttempted = false
+    private var automaticRetryInProgress = false
+    private var primaryRawText = ""
+    private var primaryInterpretedText = ""
+    private var primaryScore = Int.MIN_VALUE
     private var captureTimeoutRunnable: Runnable? = null
 
     var isRecognizerAvailable = false
@@ -154,6 +160,175 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 AviCommandStage.PLACA -> incrementMetric(KEY_MISSING_PLATE)
                 AviCommandStage.COMPLETO -> Unit
             }
+        }
+    }
+
+    private fun canUseEnhancedAudio(): Boolean {
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    }
+
+    private fun shouldRetryWithEnhancedAudio(
+        fusion: HypothesisFusionResult,
+        confidenceScores: FloatArray?
+    ): Boolean {
+        if (
+            automaticEnhancedRetryAttempted ||
+            !canUseEnhancedAudio()
+        ) {
+            return false
+        }
+
+        val analysis = AviParser.analyzeCommand(
+            fusion.text,
+            allowedVias
+        )
+
+        if (!analysis.parsed.valido) {
+            return true
+        }
+
+        val knownScores = confidenceScores
+            ?.filter { it >= 0f }
+            .orEmpty()
+
+        val lowRecognizerConfidence =
+            knownScores.isNotEmpty() &&
+                (knownScores.maxOrNull() ?: 1f) < 0.52f
+
+        val hasMultipleSources = fusion.sourceCount > 1
+
+        val lowActionConsensus =
+            hasMultipleSources &&
+                fusion.actionConfidence > 0f &&
+                fusion.actionConfidence < 0.55f
+
+        val lowViaConsensus =
+            hasMultipleSources &&
+                fusion.viaConfidence > 0f &&
+                fusion.viaConfidence < 0.55f
+
+        val plateConfidences =
+            fusion.platePositionConfidence.filter { it > 0f }
+
+        val lowPlateConsensus =
+            hasMultipleSources &&
+                plateConfidences.size == 6 &&
+                plateConfidences.any { it < 0.57f }
+
+        return lowRecognizerConfidence ||
+            lowActionConsensus ||
+            lowViaConsensus ||
+            lowPlateConsensus
+    }
+
+    private fun rememberPrimaryAttempt(
+        rawText: String,
+        interpretedText: String
+    ) {
+        primaryRawText = rawText
+        primaryInterpretedText = interpretedText
+        primaryScore = if (interpretedText.isBlank()) {
+            Int.MIN_VALUE
+        } else {
+            AviParser.scoreCandidate(
+                interpretedText,
+                allowedVias
+            )
+        }
+    }
+
+    private fun clearPrimaryAttempt() {
+        primaryRawText = ""
+        primaryInterpretedText = ""
+        primaryScore = Int.MIN_VALUE
+        automaticRetryInProgress = false
+    }
+
+    private fun publishFinalRecognition(
+        rawText: String,
+        interpretedText: String,
+        successDescription: String? = null
+    ) {
+        if (interpretedText.isBlank()) return
+
+        val analysis = AviParser.analyzeCommand(
+            interpretedText,
+            allowedVias
+        )
+
+        _voiceState.value = _voiceState.value.copy(
+            isListening = false,
+            stage = DiagnosticStage.STAGE_4,
+            stageDescription = if (
+                analysis.parsed.valido &&
+                successDescription != null
+            ) {
+                successDescription
+            } else if (analysis.parsed.valido) {
+                "4/4 Comando completo y validado."
+            } else {
+                analysis.prompt
+            },
+            recognizedText = rawText.ifBlank {
+                interpretedText
+            },
+            interpretedText = interpretedText,
+            retryCount = 0,
+            errorMessage = if (analysis.parsed.valido) {
+                null
+            } else {
+                analysis.prompt
+            }
+        )
+
+        notifyListeners(interpretedText)
+        clearPrimaryAttempt()
+    }
+
+    private fun handleVadState(
+        state: AdaptiveVoiceActivityDetector.State
+    ) {
+        mainHandler.post {
+            if (!currentAttemptUsesEnhancedAudio) {
+                return@post
+            }
+
+            val level = (state.levelDb + 90f)
+                .coerceIn(0f, 90f)
+
+            _voiceState.value = _voiceState.value.copy(
+                rmsLevel = level,
+                stage = when (state.phase) {
+                    AdaptiveVoiceActivityDetector.Phase.CALIBRATING ->
+                        DiagnosticStage.STAGE_1
+
+                    AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH ->
+                        DiagnosticStage.STAGE_2
+
+                    AdaptiveVoiceActivityDetector.Phase.SPEECH ->
+                        DiagnosticStage.STAGE_3
+
+                    AdaptiveVoiceActivityDetector.Phase.FINISHED ->
+                        _voiceState.value.stage
+                },
+                stageDescription = when (state.phase) {
+                    AdaptiveVoiceActivityDetector.Phase.CALIBRATING ->
+                        "1/4 Calibrando ruido ambiente..."
+
+                    AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH ->
+                        "2/4 Ruido calibrado. Habla ahora cerca del micrófono."
+
+                    AdaptiveVoiceActivityDetector.Phase.SPEECH ->
+                        "3/4 Voz detectada y aislada del ruido."
+
+                    AdaptiveVoiceActivityDetector.Phase.FINISHED ->
+                        if (state.timedOut) {
+                            "Procesando el mejor segmento de voz disponible..."
+                        } else {
+                            "Procesando captura reforzada..."
+                        }
+                }
+            )
         }
     }
 
