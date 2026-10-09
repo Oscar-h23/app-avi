@@ -1,11 +1,26 @@
 package com.example.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.example.model.EstadoSincronizacion
 import com.example.model.Incident
 
-@Entity(tableName = "incidencias")
+@Entity(
+    tableName = "incidencias",
+    indices = [
+        Index(
+            value = [
+                "operatorId",
+                "ownerPlazaId",
+                "serverOrigin",
+                "estadoSincronizacion",
+                "timestamp"
+            ],
+            name = "index_incident_owner_sync"
+        )
+    ]
+)
 data class IncidentEntity(
     @PrimaryKey val id: String,
     val placa: String,
@@ -18,7 +33,10 @@ data class IncidentEntity(
     val intentosSincronizacion: Int,
     val ultimoError: String?,
     val fechaHoraRecepcion: String?,
-    val timestamp: Long
+    val timestamp: Long,
+    val operatorId: String? = null,
+    val ownerPlazaId: Long? = null,
+    val serverOrigin: String? = null
 ) {
     fun toDomain(): Incident {
         return Incident(
@@ -30,19 +48,26 @@ data class IncidentEntity(
             fechaHoraEvento = fechaHoraEvento,
             textoReconocido = textoReconocido,
             estadoSincronizacion = try {
-                EstadoSincronizacion.valueOf(estadoSincronizacion)
+                EstadoSincronizacion.valueOf(
+                    estadoSincronizacion
+                )
             } catch (_: Exception) {
                 EstadoSincronizacion.PENDIENTE
             },
             intentosSincronizacion = intentosSincronizacion,
             ultimoError = ultimoError,
             fechaHoraRecepcion = fechaHoraRecepcion,
-            timestamp = timestamp
+            timestamp = timestamp,
+            operatorId = operatorId,
+            ownerPlazaId = ownerPlazaId,
+            serverOrigin = serverOrigin
         )
     }
 
     companion object {
-        fun fromDomain(incident: Incident): IncidentEntity {
+        fun fromDomain(
+            incident: Incident
+        ): IncidentEntity {
             return IncidentEntity(
                 id = incident.id,
                 placa = incident.placa,
@@ -51,11 +76,17 @@ data class IncidentEntity(
                 plazaId = incident.plazaId,
                 fechaHoraEvento = incident.fechaHoraEvento,
                 textoReconocido = incident.textoReconocido,
-                estadoSincronizacion = incident.estadoSincronizacion.name,
-                intentosSincronizacion = incident.intentosSincronizacion,
+                estadoSincronizacion =
+                    incident.estadoSincronizacion.name,
+                intentosSincronizacion =
+                    incident.intentosSincronizacion,
                 ultimoError = incident.ultimoError,
-                fechaHoraRecepcion = incident.fechaHoraRecepcion,
-                timestamp = incident.timestamp
+                fechaHoraRecepcion =
+                    incident.fechaHoraRecepcion,
+                timestamp = incident.timestamp,
+                operatorId = incident.operatorId,
+                ownerPlazaId = incident.ownerPlazaId,
+                serverOrigin = incident.serverOrigin
             )
         }
     }
