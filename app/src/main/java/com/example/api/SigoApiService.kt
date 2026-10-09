@@ -71,7 +71,7 @@ interface SigoApiService {
     suspend fun actualizarEvento(
         @Path("id") id: String,
         @Body request: RegistroSigoUpdateRequest
-    ): Response<RegistroSigoResponse>
+    ): Response<Unit>
 
     /**
      * Consulta de historial de eventos en el servidor SIGO.
