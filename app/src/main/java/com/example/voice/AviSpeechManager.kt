@@ -407,86 +407,192 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             }
 
             override fun onResults(results: Bundle?) {
+                val wasAutomaticRetry = automaticRetryInProgress
+                val wasEnhancedAttempt =
+                    currentAttemptUsesEnhancedAudio
+
                 cleanupEnhancedAudio()
+                currentAttemptUsesEnhancedAudio = false
 
                 val matches = results
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.getStringArrayList(
+                        SpeechRecognizer.RESULTS_RECOGNITION
+                    )
                     ?.filter { it.isNotBlank() }
                     .orEmpty()
 
                 val confidenceScores = results
-                    ?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+                    ?.getFloatArray(
+                        SpeechRecognizer.CONFIDENCE_SCORES
+                    )
 
-                val rawText = matches.firstOrNull()?.trim().orEmpty()
+                val rawText =
+                    matches.firstOrNull()?.trim().orEmpty()
 
                 val fusion = AviParser.fuseHypotheses(
                     candidates = matches,
                     confidenceScores = confidenceScores,
                     allowedVias = allowedVias
                 )
+
                 val interpretedText = fusion.text
 
-                if (interpretedText.isNotBlank()) {
-                    val analysis = AviParser.analyzeCommand(
-                        interpretedText,
-                        allowedVias
+                if (interpretedText.isBlank()) {
+                    handleSpeechError(
+                        SpeechRecognizer.ERROR_NO_MATCH
                     )
-                    recordRecognition(matches, interpretedText)
+                    return
+                }
 
-                    _voiceState.value = _voiceState.value.copy(
-                        isListening = false,
-                        stage = DiagnosticStage.STAGE_4,
-                        stageDescription = when {
-                            analysis.parsed.valido && fusion.fused ->
-                                "4/4 Comando validado fusionando ${fusion.sourceCount} alternativas."
-                            analysis.parsed.valido ->
-                                "4/4 Comando completo y validado."
-                            else ->
-                                analysis.prompt
-                        },
-                        // Mantener exactamente la primera transcripción del
-                        // SpeechRecognizer para auditoría y diagnóstico.
-                        recognizedText = rawText.ifBlank {
-                            interpretedText
-                        },
-                        // Este sí puede contener normalización y fusión AVIX.
-                        interpretedText = interpretedText,
-                        retryCount = 0,
-                        errorMessage = if (analysis.parsed.valido) {
-                            null
+                recordRecognition(
+                    matches,
+                    interpretedText
+                )
+
+                if (
+                    !wasAutomaticRetry &&
+                    shouldRetryWithEnhancedAudio(
+                        fusion,
+                        confidenceScores
+                    )
+                ) {
+                    rememberPrimaryAttempt(
+                        rawText = rawText,
+                        interpretedText = interpretedText
+                    )
+
+                    automaticEnhancedRetryAttempted = true
+                    automaticRetryInProgress = true
+
+                    _voiceState.value =
+                        _voiceState.value.copy(
+                            isListening = false,
+                            stage = DiagnosticStage.STAGE_2,
+                            stageDescription =
+                                "Resultado dudoso. AVIX hará un segundo intento con reducción de ruido.",
+                            recognizedText = rawText.ifBlank {
+                                interpretedText
+                            },
+                            interpretedText = interpretedText,
+                            retryCount = 1,
+                            errorMessage = null
+                        )
+
+                    mainHandler.postDelayed({
+                        startListeningInternal(
+                            preferEnhancedAudio = true,
+                            preserveOriginalText = true
+                        )
+                    }, 250)
+
+                    return
+                }
+
+                if (wasAutomaticRetry) {
+                    val retryScore =
+                        AviParser.scoreCandidate(
+                            interpretedText,
+                            allowedVias
+                        )
+
+                    val useRetry =
+                        primaryInterpretedText.isBlank() ||
+                            retryScore >= primaryScore
+
+                    val finalText = if (useRetry) {
+                        interpretedText
+                    } else {
+                        primaryInterpretedText
+                    }
+
+                    val finalRaw =
+                        primaryRawText.ifBlank {
+                            rawText.ifBlank {
+                                finalText
+                            }
+                        }
+
+                    publishFinalRecognition(
+                        rawText = finalRaw,
+                        interpretedText = finalText,
+                        successDescription = if (
+                            useRetry &&
+                            wasEnhancedAttempt
+                        ) {
+                            "4/4 Captura reforzada completada y validada."
+                        } else if (useRetry) {
+                            "4/4 Segundo intento completado y validado."
                         } else {
-                            analysis.prompt
+                            "4/4 Se conservó el primer resultado por mayor calidad."
                         }
                     )
-                    notifyListeners(interpretedText)
-                } else {
-                    handleSpeechError(SpeechRecognizer.ERROR_NO_MATCH)
+
+                    return
                 }
+
+                val analysis = AviParser.analyzeCommand(
+                    interpretedText,
+                    allowedVias
+                )
+
+                publishFinalRecognition(
+                    rawText = rawText,
+                    interpretedText = interpretedText,
+                    successDescription = when {
+                        analysis.parsed.valido &&
+                            fusion.fused ->
+                            "4/4 Comando validado fusionando ${fusion.sourceCount} alternativas."
+
+                        analysis.parsed.valido ->
+                            "4/4 Comando completo y validado."
+
+                        else -> null
+                    }
+                )
             }
 
-            override fun onPartialResults(partialResults: Bundle?) {
+            override fun onPartialResults(
+                partialResults: Bundle?
+            ) {
                 val matches = partialResults
-                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.getStringArrayList(
+                        SpeechRecognizer.RESULTS_RECOGNITION
+                    )
                     ?.filter { it.isNotBlank() }
                     .orEmpty()
 
                 val rawPartialText =
                     matches.firstOrNull()?.trim().orEmpty()
 
-                val partialText = AviParser.selectBestHypothesis(
-                    candidates = matches,
-                    allowedVias = allowedVias
-                )
+                val partialText =
+                    AviParser.selectBestHypothesis(
+                        candidates = matches,
+                        allowedVias = allowedVias
+                    )
 
                 if (partialText.isNotBlank()) {
-                    _voiceState.value = _voiceState.value.copy(
-                        recognizedText = rawPartialText.ifBlank {
-                            partialText
-                        },
-                        interpretedText = partialText,
-                        stage = DiagnosticStage.STAGE_3,
-                        stageDescription = "3/4 Interpretando comando..."
-                    )
+                    _voiceState.value =
+                        _voiceState.value.copy(
+                            recognizedText =
+                                if (
+                                    automaticRetryInProgress &&
+                                    primaryRawText.isNotBlank()
+                                ) {
+                                    primaryRawText
+                                } else {
+                                    rawPartialText.ifBlank {
+                                        partialText
+                                    }
+                                },
+                            interpretedText = partialText,
+                            stage = DiagnosticStage.STAGE_3,
+                            stageDescription =
+                                if (automaticRetryInProgress) {
+                                    "3/4 Analizando captura reforzada..."
+                                } else {
+                                    "3/4 Interpretando comando..."
+                                }
+                        )
                 }
             }
 
