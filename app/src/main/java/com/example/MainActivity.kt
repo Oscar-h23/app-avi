@@ -595,21 +595,41 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                     // Acceso rápido a Burbuja flotante
                     IconButton(
                         onClick = {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(context)) {
-                                val intent = Intent(
-                                    Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                    Uri.parse("package:${context.packageName}")
-                                )
-                                context.startActivity(intent)
-                                Toast.makeText(context, "Conceda permiso para superponer burbuja AVIX", Toast.LENGTH_LONG).show()
+                            if (bubbleRunning) {
+                                FloatingBubbleService.stop(context)
+                                Toast.makeText(
+                                    context,
+                                    "Burbuja AVIX desactivada",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             } else {
-                                val intent = Intent(context, FloatingBubbleService::class.java)
-                                if (bubbleRunning) {
-                                    FloatingBubbleService.stop(context)
-                                    Toast.makeText(context, "Burbuja AVIX desactivada", Toast.LENGTH_SHORT).show()
+                                val hasAudioPermission =
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO
+                                    ) == PackageManager.PERMISSION_GRANTED
+
+                                val hasOverlayPermission =
+                                    Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                                        Settings.canDrawOverlays(context)
+
+                                if (
+                                    !hasAudioPermission ||
+                                    !hasOverlayPermission
+                                ) {
+                                    currentTab = AviNavigationTab.INICIO
+                                    Toast.makeText(
+                                        context,
+                                        "Activa la burbuja desde Inicio para completar los permisos.",
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                 } else {
                                     FloatingBubbleService.start(context)
-                                    Toast.makeText(context, "Burbuja flotante AVIX activada encima de otras apps", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(
+                                        context,
+                                        "Burbuja AVIX activada",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
                                 }
                             }
                         }
