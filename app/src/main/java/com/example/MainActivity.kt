@@ -103,12 +103,12 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -124,6 +124,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.api.SigoApiService
 import com.example.data.ApiConnectionState
 import com.example.data.IncidentRepository
@@ -133,6 +135,8 @@ import com.example.model.Incident
 import com.example.model.ParsedCommand
 import com.example.parser.AviParser
 import com.example.service.FloatingBubbleService
+import com.example.ui.registration.PlateConfidenceHint
+import com.example.ui.registration.RegistrationViewModel
 import com.example.ui.theme.AviActionDerivado
 import com.example.ui.theme.AviActionFuga
 import com.example.ui.theme.AviBlueAccent
@@ -171,7 +175,7 @@ enum class AviNavigationTab(val title: String) {
 fun AviRootNavHost() {
     val context = LocalContext.current
     val repository = remember { IncidentRepository.getInstance(context) }
-    val sessionState by repository.sessionState.collectAsState()
+    val sessionState by repository.sessionState.collectAsStateWithLifecycle()
 
     // Manejo de eventos de sesión expirada
     LaunchedEffect(Unit) {
@@ -202,7 +206,7 @@ fun AviLoginScreen(repository: IncidentRepository) {
     var showUrlDialog by remember { mutableStateOf(false) }
     var tempUrl by remember { mutableStateOf(repository.getBaseUrl()) }
 
-    val connectionState by repository.connectionState.collectAsState()
+    val connectionState by repository.connectionState.collectAsStateWithLifecycle()
 
     Box(
         modifier = Modifier
@@ -498,31 +502,30 @@ fun AviLoginScreen(repository: IncidentRepository) {
 fun AviMainDashboardScaffold(repository: IncidentRepository) {
     val context = LocalContext.current
     val usuario = repository.getUsuarioActual()
-    val connectionState by repository.connectionState.collectAsState()
-    val pendientesCount by repository.pendientesCountFlow.collectAsState(initial = 0)
-    val allowedVias by repository.allowedVias.collectAsState()
-    val bubbleRunning by FloatingBubbleService.runningState.collectAsState()
+    val connectionState by repository.connectionState.collectAsStateWithLifecycle()
+    val pendientesCount by repository.pendientesCountFlow.collectAsStateWithLifecycle(initialValue = 0)
+    val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
+    val bubbleRunning by FloatingBubbleService.runningState.collectAsStateWithLifecycle()
     val speechManager = remember { AviSpeechManager.getInstance(context) }
+    val registrationDraft: RegistrationViewModel = viewModel()
 
     LaunchedEffect(allowedVias) {
         speechManager.setAllowedVias(allowedVias)
     }
 
-    var currentTab by remember { mutableStateOf(AviNavigationTab.INICIO) }
+    var currentTab by rememberSaveable {
+        mutableStateOf(AviNavigationTab.INICIO)
+    }
 
-    // Estado del comando dictado o editado
+    // El ViewModel conserva UUID, hora y campos ante recreaciones.
     var currentParsedCommand by remember {
         mutableStateOf(
-            ParsedCommand(
-                placa = "",
-                via = null,
-                accion = "FUGA",
-                textoOriginal = "",
-                valido = false
-            )
+            registrationDraft.restoreCommand()
         )
     }
-    var fechaHoraEventoCapturada by remember { mutableStateOf(AviDateUtils.nowLimaIso()) }
+    var fechaHoraEventoCapturada by remember {
+        mutableStateOf(registrationDraft.eventTime)
+    }
 
     // BackHandler para navegación natural en Compose
     BackHandler(enabled = currentTab != AviNavigationTab.INICIO) {
@@ -700,18 +703,21 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         repository = repository,
                         pendientesCount = pendientesCount,
                         onIniciarHablar = {
-                            fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
-                            currentParsedCommand = ParsedCommand(
-                                placa = "",
-                                via = null,
-                                accion = "FUGA",
-                                textoOriginal = "",
-                                valido = false
+                            registrationDraft.newDraft(
+                                repository.currentOwner()
                             )
+                            fechaHoraEventoCapturada =
+                                registrationDraft.eventTime
+                            currentParsedCommand =
+                                registrationDraft.restoreCommand()
                             currentTab = AviNavigationTab.DICTADO
                         },
                         onRegistroManual = {
-                            fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
+                            registrationDraft.newDraft(
+                                repository.currentOwner()
+                            )
+                            fechaHoraEventoCapturada =
+                                registrationDraft.eventTime
                             currentParsedCommand = ParsedCommand(
                                 placa = "",
                                 via = null,
@@ -719,12 +725,24 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                                 textoOriginal = "Ingreso manual desde panel",
                                 valido = false
                             )
+                            registrationDraft.updateDraft(
+                                currentParsedCommand
+                            )
                             currentTab = AviNavigationTab.REVISION
                         },
                         onSimularFrase = { frase ->
-                            fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
-                            val parsed = AviParser.parse(frase, allowedVias)
+                            registrationDraft.newDraft(
+                                repository.currentOwner()
+                            )
+                            fechaHoraEventoCapturada =
+                                registrationDraft.eventTime
+                            val parsed =
+                                AviParser.parse(
+                                    frase,
+                                    allowedVias
+                                )
                             currentParsedCommand = parsed
+                            registrationDraft.updateDraft(parsed)
                             currentTab = AviNavigationTab.REVISION
                         }
                     )
@@ -764,6 +782,9 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                                     dictadoOriginal
                                 }
                             )
+                            registrationDraft.updateDraft(
+                                currentParsedCommand
+                            )
                             currentTab = AviNavigationTab.REVISION
                         },
                         onCancelar = {
@@ -777,6 +798,8 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                         repository = repository,
                         parsedCommand = currentParsedCommand,
                         fechaHoraEvento = fechaHoraEventoCapturada,
+                        draft = registrationDraft,
+                        voiceState = speechManager.voiceState.value,
                         onConfirmado = {
                             currentTab = AviNavigationTab.HISTORIAL
                         },
@@ -815,8 +838,8 @@ fun PantallaInicio(
 ) {
     val context = LocalContext.current
     val usuario = repository.getUsuarioActual()
-    val connectionState by repository.connectionState.collectAsState()
-    val bubbleRunning by FloatingBubbleService.runningState.collectAsState()
+    val connectionState by repository.connectionState.collectAsStateWithLifecycle()
+    val bubbleRunning by FloatingBubbleService.runningState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     fun startBubbleNow() {
@@ -1287,7 +1310,7 @@ fun PantallaEscucha(
     onCancelar: () -> Unit
 ) {
     val context = LocalContext.current
-    val voiceState by speechManager.voiceState.collectAsState()
+    val voiceState by speechManager.voiceState.collectAsStateWithLifecycle()
 
     var hasAudioPermission by remember {
         mutableStateOf(
@@ -1527,7 +1550,7 @@ fun PantallaConfirmacion(
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val allowedVias by repository.allowedVias.collectAsState()
+    val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
 
     var placaInput by remember { mutableStateOf(parsedCommand.placa) }
     var viaInput by remember { mutableStateOf(parsedCommand.via?.toString() ?: "") }
@@ -1945,10 +1968,10 @@ fun PantallaHistorial(repository: IncidentRepository) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    val incidents by repository.incidentsFlow.collectAsState(initial = emptyList())
-    val isSyncing by repository.isSyncing.collectAsState()
-    val lastSyncSummary by repository.lastSyncSummary.collectAsState()
-    val allowedVias by repository.allowedVias.collectAsState()
+    val incidents by repository.incidentsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val isSyncing by repository.isSyncing.collectAsStateWithLifecycle()
+    val lastSyncSummary by repository.lastSyncSummary.collectAsStateWithLifecycle()
+    val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
 
     var filtroSeleccionado by remember { mutableStateOf(FiltroHistorial.TODOS) }
     var editingIncident by remember { mutableStateOf<Incident?>(null) }
@@ -2458,8 +2481,8 @@ fun IncidenteCard(
 fun PantallaConfiguracion(repository: IncidentRepository) {
     val context = LocalContext.current
     val usuario = repository.getUsuarioActual()
-    val connectionState by repository.connectionState.collectAsState()
-    val allowedVias by repository.allowedVias.collectAsState()
+    val connectionState by repository.connectionState.collectAsStateWithLifecycle()
+    val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
     val voiceMetrics = remember {
         AviSpeechManager.getInstance(context).getVoiceMetrics()
     }
@@ -2470,7 +2493,7 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
     }
 
     var isCheckingConnection by remember { mutableStateOf(false) }
-    val isBubbleRunning by FloatingBubbleService.runningState.collectAsState()
+    val isBubbleRunning by FloatingBubbleService.runningState.collectAsStateWithLifecycle()
 
     Column(
         modifier = Modifier
