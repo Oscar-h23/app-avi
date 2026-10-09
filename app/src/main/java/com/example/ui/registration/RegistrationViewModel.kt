@@ -59,7 +59,7 @@ class RegistrationViewModel(
             AviDateUtils.nowLimaIso()
 
         state[KEY_PLATE] = ""
-        state[KEY_VIA] = null
+        state.remove<Int>(KEY_VIA)
         state[KEY_ACTION] = "FUGA"
         state[KEY_ORIGINAL_TEXT] = ""
         state[KEY_SUBMITTED] = false
@@ -74,9 +74,9 @@ class RegistrationViewModel(
         owner: IncidentOwner?
     ) {
         if (owner == null) {
-            state[KEY_OWNER_OPERATOR] = null
-            state[KEY_OWNER_PLAZA] = null
-            state[KEY_OWNER_SERVER] = null
+            state.remove<String>(KEY_OWNER_OPERATOR)
+            state.remove<Long>(KEY_OWNER_PLAZA)
+            state.remove<String>(KEY_OWNER_SERVER)
             return
         }
 
