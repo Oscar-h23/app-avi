@@ -776,21 +776,28 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     }
 
     fun startListening() {
-        // En operación prima la velocidad: el primer toque usa directamente
-        // el SpeechRecognizer estándar, que es el modo más compatible del dispositivo.
-        // La capa contextual de AVIX sigue activa: biasing, ranking, parser y autocorrección.
-        enhancedFallbackAttempted = false
+        // Primer intento rápido y compatible. El modo reforzado se activa
+        // automáticamente solo si este resultado sale dudoso o incompleto.
+        automaticEnhancedRetryAttempted = false
+        automaticRetryInProgress = false
+        currentAttemptUsesEnhancedAudio = false
+        clearPrimaryAttempt()
+
         _voiceState.value = _voiceState.value.copy(
             retryCount = 0,
             errorMessage = null,
             recognizedText = "",
             interpretedText = ""
         )
-        startListeningInternal(preferEnhancedAudio = false)
+
+        startListeningInternal(
+            preferEnhancedAudio = false
+        )
     }
 
     private fun startListeningInternal(
-        preferEnhancedAudio: Boolean
+        preferEnhancedAudio: Boolean,
+        preserveOriginalText: Boolean = false
     ) {
         simulationJob?.cancel()
 
@@ -828,12 +835,16 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     preferEnhancedAudio &&
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 ) {
-                    noiseReducedAudioSource.start()
+                    noiseReducedAudioSource.start { state ->
+                        handleVadState(state)
+                    }
                 } else {
                     null
                 }
 
                 enhancedAudioActive = enhancedSession != null
+                currentAttemptUsesEnhancedAudio =
+                    enhancedSession != null
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(
@@ -908,12 +919,28 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     "Captura rápida activa."
                 }
 
+                val previousRaw =
+                    _voiceState.value.recognizedText
+                val previousInterpreted =
+                    _voiceState.value.interpretedText
+
                 _voiceState.value = _voiceState.value.copy(
                     isListening = true,
                     stage = DiagnosticStage.STAGE_1,
-                    stageDescription = "1/4 $audioModeText Diga: acción, vía y placa.",
-                    recognizedText = "",
-                    interpretedText = "",
+                    stageDescription =
+                        "1/4 $audioModeText Diga: acción, vía y placa.",
+                    recognizedText =
+                        if (preserveOriginalText) {
+                            previousRaw
+                        } else {
+                            ""
+                        },
+                    interpretedText =
+                        if (preserveOriginalText) {
+                            previousInterpreted
+                        } else {
+                            ""
+                        },
                     rmsLevel = 0f,
                     errorMessage = null
                 )
@@ -1019,7 +1046,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         private const val KEY_PLATE_CORRECTIONS = "plate_corrections"
         private const val KEY_VIA_CORRECTIONS = "via_corrections"
         private const val KEY_ACTION_CORRECTIONS = "action_corrections"
-        private const val ENHANCED_AUDIO_MAX_DURATION_MS = 8_000L
+        private const val ENHANCED_AUDIO_MAX_DURATION_MS = 9_500L
 
         @Volatile
         private var instance: AviSpeechManager? = null
