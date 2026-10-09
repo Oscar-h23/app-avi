@@ -51,6 +51,7 @@ object AviParser {
         "oscar" to "O",
         "papa" to "P",
         "quebec" to "Q", "quebek" to "Q", "quebeck" to "Q",
+        "kebe" to "Q", "kevel" to "Q",
         "romeo" to "R",
         "sierra" to "S",
         "tango" to "T",
@@ -60,7 +61,7 @@ object AviParser {
         "xray" to "X", "x ray" to "X", "x rey" to "X",
         "exray" to "X", "ex rey" to "X",
         "equisray" to "X", "equis ray" to "X", "equis rey" to "X",
-        "ray" to "X", "rey" to "X", "equis" to "X",
+        "ray" to "X", "rey" to "X", "equis" to "X", "extra" to "X",
         "yankee" to "Y", "yanki" to "Y", "yanqui" to "Y",
         // Variantes que el ASR puede producir al escuchar "Zulu".
         // Se interpretan como Z únicamente dentro del bloque de placa.
@@ -146,7 +147,12 @@ object AviParser {
     // Confusiones observables del ASR. No se reemplazan globalmente:
     // solo cuando la estructura del comando indica que AVIX está esperando ese marcador.
     private val viaContextAliases = setOf(
-        "via", "habia", "avia", "bia", "dia", "guia"
+        "via", "habia", "avia", "bia", "dia", "guia", "ia"
+    )
+
+    private val viaContextPairAliases = setOf(
+        "vi a",
+        "y a"
     )
 
     private val placaContextAliases = setOf(
@@ -342,6 +348,20 @@ object AviParser {
             editDistance(token, "via") <= 2
     }
 
+    private fun viaAliasLength(
+        tokens: List<String>,
+        index: Int
+    ): Int {
+        val token = tokens.getOrNull(index) ?: return 0
+
+        if (resemblesVia(token)) return 1
+
+        val pair = tokens.getOrNull(index + 1)
+            ?.let { next -> "$token $next" }
+
+        return if (pair in viaContextPairAliases) 2 else 0
+    }
+
     private fun resemblesPlaca(token: String): Boolean {
         if (token in placaContextAliases) return true
         return token.length in 4..7 &&
@@ -366,11 +386,18 @@ object AviParser {
         // FUGA si inmediatamente después aparece un candidato a VÍA seguido de número.
         if (tokens.isNotEmpty() && tokens[0] in fugaContextAliases) {
             val possibleViaIndex = 1
-            val possibleNumberIndex = 2
+            val aliasLength = viaAliasLength(
+                tokens,
+                possibleViaIndex
+            )
+            val possibleNumberIndex =
+                possibleViaIndex + aliasLength
+
             if (
                 tokens[0] != "fuga" &&
-                tokens.getOrNull(possibleViaIndex)?.let { resemblesVia(it) } == true &&
-                tokens.getOrNull(possibleNumberIndex)?.let { isNumberContextToken(it) } == true
+                aliasLength > 0 &&
+                tokens.getOrNull(possibleNumberIndex)
+                    ?.let { isNumberContextToken(it) } == true
             ) {
                 tokens[0] = "fuga"
             }
@@ -394,15 +421,23 @@ object AviParser {
                 .let { if (it >= 0) it else tokens.size }
 
             for (i in (actionIndex + 1) until plateBoundary) {
-                val token = tokens[i]
-                val next = tokens.getOrNull(i + 1)
+                val aliasLength = viaAliasLength(tokens, i)
+                if (aliasLength == 0) continue
+
+                val numberToken = tokens.getOrNull(
+                    i + aliasLength
+                )
 
                 if (
-                    resemblesVia(token) &&
-                    next != null &&
-                    isNumberContextToken(next)
+                    numberToken != null &&
+                    isNumberContextToken(numberToken)
                 ) {
                     tokens[i] = "via"
+
+                    if (aliasLength == 2) {
+                        tokens.removeAt(i + 1)
+                    }
+
                     break
                 }
             }
