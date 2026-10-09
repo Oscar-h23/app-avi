@@ -850,7 +850,7 @@ class IncidentRepository internal constructor(
     private suspend fun sync():
         Pair<SyncOutcome, Int> =
         withContext(Dispatchers.IO) {
-            syncMutex.withLock {
+            syncMutex.withLock<Pair<SyncOutcome, Int>> {
                 val token =
                     sessionManager.getToken()
                         ?: return@withLock
