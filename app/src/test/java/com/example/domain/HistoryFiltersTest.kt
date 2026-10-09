@@ -89,6 +89,70 @@ class HistoryFiltersTest {
     }
 
     @Test
+    fun `history pagination returns twelve items per page`() {
+        val manyIncidents =
+            (1..25).map { index ->
+                Incident(
+                    id = index.toString(),
+                    placa = "ABC123",
+                    via = 101,
+                    accion = "FUGA",
+                    fechaHoraEvento =
+                        "2026-10-09T08:00:00-05:00"
+                )
+            }
+
+        val first =
+            HistoryFilters.paginate(
+                incidents = manyIncidents,
+                page = 1
+            )
+        val second =
+            HistoryFilters.paginate(
+                incidents = manyIncidents,
+                page = 2
+            )
+        val third =
+            HistoryFilters.paginate(
+                incidents = manyIncidents,
+                page = 3
+            )
+
+        assertEquals(12, first.items.size)
+        assertEquals(12, second.items.size)
+        assertEquals(1, third.items.size)
+        assertEquals(3, third.totalPages)
+        assertEquals(25, third.totalItems)
+        assertEquals(25, third.fromItem)
+        assertEquals(25, third.toItem)
+    }
+
+    @Test
+    fun `history pagination clamps page to valid range`() {
+        val fewIncidents =
+            (1..5).map { index ->
+                Incident(
+                    id = index.toString(),
+                    placa = "ABC123",
+                    via = 101,
+                    accion = "FUGA",
+                    fechaHoraEvento =
+                        "2026-10-09T08:00:00-05:00"
+                )
+            }
+
+        val page =
+            HistoryFilters.paginate(
+                incidents = fewIncidents,
+                page = 99
+            )
+
+        assertEquals(1, page.currentPage)
+        assertEquals(1, page.totalPages)
+        assertEquals(5, page.items.size)
+    }
+
+    @Test
     fun `invalid date is reported instead of silently filtering`() {
         val result =
             HistoryFilters.apply(
