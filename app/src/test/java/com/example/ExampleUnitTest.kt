@@ -678,6 +678,63 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testFusionCombinaViaCorrectaYPlacaCorrectaEntreAlternativas() {
+        val fusion = AviParser.fuseHypotheses(
+            candidates = listOf(
+                "Fuga vía 111 placa India primero Lima primero primero negativo",
+                "Fuga vía 101 placa India primero Lima primero primero primero",
+                "Fuga había 101 placa India primero Lima primero primero negativo",
+                "Fuga vía 101 placa India primero Lima primero primero uno",
+                "Fuga vía 111 placa India primero Lima primero primero negativo"
+            ),
+            confidenceScores = floatArrayOf(0.93f, 0.90f, 0.84f, 0.78f, 0.70f),
+            allowedVias = setOf(101, 102, 103)
+        )
+
+        assertTrue(fusion.fused)
+        assertEquals("FUGA", fusion.parsed.accion)
+        assertEquals(101, fusion.parsed.via)
+        assertEquals("I1L110", fusion.parsed.placa)
+        assertTrue(fusion.parsed.valido)
+    }
+
+    @Test
+    fun testFusionVotaCadaPosicionDePlaca() {
+        val fusion = AviParser.fuseHypotheses(
+            candidates = listOf(
+                "Fuga vía 101 placa India primero Lima primero primero negativo",
+                "Fuga vía 101 placa India primero Lima primero primero primero",
+                "Fuga vía 101 placa India primero Lima primero primero negativo",
+                "Fuga vía 101 placa India primero Lima primero primero negativo",
+                "Fuga vía 101 placa India primero Lima primero primero primero"
+            ),
+            confidenceScores = floatArrayOf(0.82f, 0.91f, 0.80f, 0.76f, 0.72f),
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("I1L110", fusion.parsed.placa)
+        assertTrue(fusion.platePositionConfidence[5] > 0.5f)
+        assertTrue(fusion.parsed.valido)
+    }
+
+    @Test
+    fun testFusionDescartaViaFueraDeCatalogoAunqueTengaAltaConfianza() {
+        val fusion = AviParser.fuseHypotheses(
+            candidates = listOf(
+                "Fuga vía 111 placa Bravo Tango Lima segundo cuarto quinto",
+                "Fuga vía 101 placa Bravo Tango Lima segundo cuarto quinto",
+                "Fuga vía 101 placa Bravo Tango Lima segundo cuarto quinto"
+            ),
+            confidenceScores = floatArrayOf(0.99f, 0.72f, 0.68f),
+            allowedVias = setOf(101, 102)
+        )
+
+        assertEquals(101, fusion.parsed.via)
+        assertEquals("BTL245", fusion.parsed.placa)
+        assertTrue(fusion.parsed.valido)
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
