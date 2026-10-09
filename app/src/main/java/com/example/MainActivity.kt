@@ -793,9 +793,101 @@ fun PantallaInicio(
     onRegistroManual: () -> Unit,
     onSimularFrase: (String) -> Unit
 ) {
+    val context = LocalContext.current
     val usuario = repository.getUsuarioActual()
     val connectionState by repository.connectionState.collectAsState()
+    val bubbleRunning by FloatingBubbleService.runningState.collectAsState()
     val scope = rememberCoroutineScope()
+
+    fun startBubbleNow() {
+        FloatingBubbleService.start(context)
+        Toast.makeText(
+            context,
+            "Burbuja AVIX activada. Tócala para dictar.",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
+
+    val overlayPermissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.StartActivityForResult()
+        ) {
+            val allowed =
+                Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+                    Settings.canDrawOverlays(context)
+
+            if (allowed) {
+                startBubbleNow()
+            } else {
+                Toast.makeText(
+                    context,
+                    "AVIX necesita permiso para mostrarse sobre otras apps.",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+
+    val audioPermissionLauncher =
+        rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            if (!granted) {
+                Toast.makeText(
+                    context,
+                    "El micrófono es necesario para usar la burbuja AVIX.",
+                    Toast.LENGTH_LONG
+                ).show()
+            } else if (
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                !Settings.canDrawOverlays(context)
+            ) {
+                overlayPermissionLauncher.launch(
+                    Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:${context.packageName}")
+                    )
+                )
+            } else {
+                startBubbleNow()
+            }
+        }
+
+    val toggleBubble: () -> Unit = {
+        if (bubbleRunning) {
+            FloatingBubbleService.stop(context)
+            Toast.makeText(
+                context,
+                "Burbuja AVIX desactivada.",
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            val hasAudioPermission =
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.RECORD_AUDIO
+                ) == PackageManager.PERMISSION_GRANTED
+
+            when {
+                !hasAudioPermission -> {
+                    audioPermissionLauncher.launch(
+                        Manifest.permission.RECORD_AUDIO
+                    )
+                }
+
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                    !Settings.canDrawOverlays(context) -> {
+                    overlayPermissionLauncher.launch(
+                        Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:${context.packageName}")
+                        )
+                    )
+                }
+
+                else -> startBubbleNow()
+            }
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -883,6 +975,171 @@ fun PantallaInicio(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
                     )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = if (bubbleRunning) {
+                    Color(0xFFF0F7FF)
+                } else {
+                    MaterialTheme.colorScheme.surface
+                }
+            ),
+            border = androidx.compose.foundation.BorderStroke(
+                1.dp,
+                if (bubbleRunning) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                } else {
+                    MaterialTheme.colorScheme.outline
+                }
+            ),
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = 0.dp
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        modifier = Modifier.size(44.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = if (bubbleRunning) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.primaryContainer
+                        }
+                    ) {
+                        Box(
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Layers,
+                                contentDescription = null,
+                                tint = if (bubbleRunning) {
+                                    Color.White
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = "Burbuja AVIX",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                        Text(
+                            text = if (bubbleRunning) {
+                                "Activa sobre otras aplicaciones"
+                            } else {
+                                "Acceso rápido mientras usas otras apps"
+                            },
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = if (bubbleRunning) {
+                            Color(0xFFE7F7EF)
+                        } else {
+                            Color(0xFFF1F5F9)
+                        }
+                    ) {
+                        Text(
+                            text = if (bubbleRunning) {
+                                "ACTIVA"
+                            } else {
+                                "INACTIVA"
+                            },
+                            color = if (bubbleRunning) {
+                                AviStatusOnline
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(
+                                horizontal = 9.dp,
+                                vertical = 5.dp
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = if (bubbleRunning) {
+                        "Toca la burbuja flotante y AVIX abrirá el panel e iniciará el reconocimiento de voz automáticamente."
+                    } else {
+                        "Actívala para registrar por voz sin volver a AVIX. Al tocar la burbuja, el micrófono comenzará a escuchar automáticamente."
+                    },
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (bubbleRunning) {
+                    OutlinedButton(
+                        onClick = toggleBubble,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp),
+                        shape = RoundedCornerShape(11.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Stop,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Desactivar burbuja",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = toggleBubble,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(11.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = AviNavy
+                        )
+                    ) {
+                        Icon(
+                            Icons.Default.Layers,
+                            contentDescription = null,
+                            modifier = Modifier.size(19.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Activar burbuja AVIX",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
         }
