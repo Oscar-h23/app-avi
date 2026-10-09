@@ -129,6 +129,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.api.SigoApiService
 import com.example.data.ApiConnectionState
 import com.example.data.IncidentRepository
+import com.example.domain.HistoryFilters
+import com.example.domain.HistoryStatusFilter
 import com.example.model.DiagnosticStage
 import com.example.model.EstadoSincronizacion
 import com.example.model.Incident
@@ -2024,118 +2026,319 @@ fun PantallaConfirmacion(
 // =========================================================================
 // PANTALLA 5: HISTORIAL DE EVENTOS (Room Database + SIGO)
 // =========================================================================
-enum class FiltroHistorial(val label: String) {
-    TODOS("Todos"),
-    FUGAS("Fugas"),
-    DERIVADOS("Derivados"),
-    PENDIENTES("Pendientes")
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalLayoutApi::class
+)
 @Composable
-fun PantallaHistorial(repository: IncidentRepository) {
+fun PantallaHistorial(
+    repository: IncidentRepository
+) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    val incidents by repository.incidentsFlow.collectAsStateWithLifecycle(initialValue = emptyList())
-    val isSyncing by repository.isSyncing.collectAsStateWithLifecycle()
-    val lastSyncSummary by repository.lastSyncSummary.collectAsStateWithLifecycle()
-    val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
+    val incidents by repository.incidentsFlow
+        .collectAsStateWithLifecycle(
+            initialValue = emptyList()
+        )
+    val isSyncing by repository.isSyncing
+        .collectAsStateWithLifecycle()
+    val lastSyncSummary by repository.lastSyncSummary
+        .collectAsStateWithLifecycle()
+    val allowedVias by repository.allowedVias
+        .collectAsStateWithLifecycle()
 
-    var filtroSeleccionado by remember { mutableStateOf(FiltroHistorial.TODOS) }
-    var editingIncident by remember { mutableStateOf<Incident?>(null) }
-
-    val incidentesFiltrados = remember(incidents, filtroSeleccionado) {
-        when (filtroSeleccionado) {
-            FiltroHistorial.TODOS -> incidents
-            FiltroHistorial.FUGAS -> incidents.filter { it.accion.equals("FUGA", ignoreCase = true) }
-            FiltroHistorial.DERIVADOS -> incidents.filter { it.accion.equals("DERIVADO", ignoreCase = true) }
-            FiltroHistorial.PENDIENTES -> incidents.filter { it.estadoSincronizacion != EstadoSincronizacion.SINCRONIZADO }
-        }
+    var filtroSeleccionado by rememberSaveable {
+        mutableStateOf(
+            HistoryStatusFilter.TODOS
+        )
     }
+    var plateQuery by rememberSaveable {
+        mutableStateOf("")
+    }
+    var fromDate by rememberSaveable {
+        mutableStateOf("")
+    }
+    var toDate by rememberSaveable {
+        mutableStateOf("")
+    }
+    var editingIncident by remember {
+        mutableStateOf<Incident?>(null)
+    }
+
+    val filterResult = remember(
+        incidents,
+        filtroSeleccionado,
+        plateQuery,
+        fromDate,
+        toDate
+    ) {
+        HistoryFilters.apply(
+            incidents = incidents,
+            status = filtroSeleccionado,
+            plateQuery = plateQuery,
+            fromDate = fromDate,
+            toDate = toDate
+        )
+    }
+
+    val incidentesFiltrados =
+        filterResult.items
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        // Encabezado con Botón de Sincronización
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+            horizontalArrangement =
+                Arrangement.SpaceBetween,
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
-            Column {
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
                 Text(
                     text = "Historial Operativo",
                     fontWeight = FontWeight.Bold,
                     fontSize = 20.sp
                 )
                 Text(
-                    text = "${incidents.size} eventos en base local",
+                    text =
+                        "${incidents.size} evento(s) del operador actual",
                     fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .onSurfaceVariant
                 )
             }
 
             Button(
                 onClick = {
                     scope.launch {
-                        val cant = repository.sincronizarPendientes()
-                        Toast.makeText(context, "Sincronizados: $cant", Toast.LENGTH_SHORT).show()
+                        val cant =
+                            repository
+                                .sincronizarPendientes()
+
+                        Toast.makeText(
+                            context,
+                            "$cant registro(s) confirmados en SIGO",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 },
                 enabled = !isSyncing,
                 shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AviNavy)
+                colors =
+                    ButtonDefaults.buttonColors(
+                        containerColor = AviNavy
+                    )
             ) {
                 if (isSyncing) {
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = Color.White, strokeWidth = 2.dp)
+                    CircularProgressIndicator(
+                        modifier =
+                            Modifier.size(16.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
                 } else {
-                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("Sincronizar", fontSize = 12.sp)
+                    Icon(
+                        Icons.Default.Sync,
+                        contentDescription = null,
+                        modifier =
+                            Modifier.size(16.dp)
+                    )
+                    Spacer(
+                        modifier =
+                            Modifier.width(6.dp)
+                    )
+                    Text(
+                        "Sincronizar",
+                        fontSize = 12.sp
+                    )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(
+            modifier = Modifier.height(8.dp)
+        )
 
-        // Chips de Filtros
+        Text(
+            text = lastSyncSummary,
+            fontSize = 11.sp,
+            color =
+                MaterialTheme
+                    .colorScheme
+                    .onSurfaceVariant
+        )
+
+        Spacer(
+            modifier = Modifier.height(10.dp)
+        )
+
+        OutlinedTextField(
+            value = plateQuery,
+            onValueChange = {
+                plateQuery =
+                    it.uppercase()
+                        .replace(" ", "")
+                        .replace("-", "")
+            },
+            label = {
+                Text("Buscar placa")
+            },
+            placeholder = {
+                Text("Ej: X1Z505")
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Spacer(
+            modifier = Modifier.height(8.dp)
+        )
+
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement =
+                Arrangement.spacedBy(8.dp)
         ) {
-            for (f in FiltroHistorial.entries) {
-                FilterChip(
-                    selected = filtroSeleccionado == f,
-                    onClick = { filtroSeleccionado = f },
-                    label = { Text(f.label, fontSize = 12.sp) }
-                )
-            }
+            OutlinedTextField(
+                value = fromDate,
+                onValueChange = {
+                    if (it.length <= 10) {
+                        fromDate = it
+                    }
+                },
+                label = {
+                    Text("Desde")
+                },
+                placeholder = {
+                    Text("AAAA-MM-DD")
+                },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
+
+            OutlinedTextField(
+                value = toDate,
+                onValueChange = {
+                    if (it.length <= 10) {
+                        toDate = it
+                    }
+                },
+                label = {
+                    Text("Hasta")
+                },
+                placeholder = {
+                    Text("AAAA-MM-DD")
+                },
+                singleLine = true,
+                modifier = Modifier.weight(1f)
+            )
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        filterResult.validationMessage
+            ?.let { message ->
+                Spacer(
+                    modifier =
+                        Modifier.height(5.dp)
+                )
+                Text(
+                    text = message,
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .error,
+                    fontSize = 11.sp
+                )
+            }
 
-        // Lista de Incidencias
-        if (incidentesFiltrados.isEmpty()) {
+        Spacer(
+            modifier = Modifier.height(8.dp)
+        )
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement =
+                Arrangement.spacedBy(6.dp),
+            verticalArrangement =
+                Arrangement.spacedBy(4.dp)
+        ) {
+            HistoryStatusFilter.entries
+                .forEach { filter ->
+                    FilterChip(
+                        selected =
+                            filtroSeleccionado ==
+                            filter,
+                        onClick = {
+                            filtroSeleccionado =
+                                filter
+                        },
+                        label = {
+                            Text(
+                                filter.label,
+                                fontSize = 11.sp
+                            )
+                        }
+                    )
+                }
+        }
+
+        Spacer(
+            modifier = Modifier.height(8.dp)
+        )
+
+        if (
+            incidentesFiltrados.isEmpty()
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                contentAlignment = Alignment.Center
+                contentAlignment =
+                    Alignment.Center
             ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
+                ) {
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ListAlt,
+                        imageVector =
+                            Icons.AutoMirrored
+                                .Filled
+                                .ListAlt,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.size(48.dp)
+                        tint =
+                            MaterialTheme
+                                .colorScheme
+                                .outline,
+                        modifier =
+                            Modifier.size(48.dp)
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
                     Text(
-                        text = "No hay registros para este filtro",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        text =
+                            if (
+                                filterResult
+                                    .validationMessage !=
+                                null
+                            ) {
+                                "Corrige el filtro de fecha"
+                            } else {
+                                "No hay registros para estos filtros"
+                            },
+                        color =
+                            MaterialTheme
+                                .colorScheme
+                                .onSurfaceVariant,
                         fontSize = 14.sp
                     )
                 }
@@ -2143,13 +2346,18 @@ fun PantallaHistorial(repository: IncidentRepository) {
         } else {
             LazyColumn(
                 modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                verticalArrangement =
+                    Arrangement.spacedBy(10.dp)
             ) {
-                items(incidentesFiltrados, key = { it.id }) { item ->
+                items(
+                    incidentesFiltrados,
+                    key = { it.id }
+                ) { item ->
                     IncidenteCard(
                         item = item,
                         onEdit = {
-                            editingIncident = item
+                            editingIncident =
+                                item
                         }
                     )
                 }
