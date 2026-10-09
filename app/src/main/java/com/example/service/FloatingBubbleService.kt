@@ -366,21 +366,38 @@ fun FloatingOverlayContent(
     // Si el primer intento quedó incompleto, el siguiente dictado puede corregir
     // solo acción, vía o placa sin perder los datos ya reconocidos.
     DisposableEffect(speechManager, allowedVias) {
-        val listener: (String) -> Unit = { textoReconocido ->
+        val listener: (String) -> Unit = { textoInterpretado ->
             fechaHoraEventoCapturada = AviDateUtils.nowLimaIso()
 
-            val parsed = if (
-                lastParsedCommand.textoOriginal.isNotBlank() &&
+            val dictadoOriginal = speechManager
+                .voiceState
+                .value
+                .recognizedText
+                .ifBlank { textoInterpretado }
+
+            val originalPrevio = lastParsedCommand.textoOriginal
+
+            val parsedBase = if (
+                originalPrevio.isNotBlank() &&
                 !lastParsedCommand.valido
             ) {
                 AviParser.mergeCorrection(
                     previous = lastParsedCommand,
-                    rawCorrection = textoReconocido,
+                    rawCorrection = textoInterpretado,
                     allowedVias = allowedVias
                 )
             } else {
-                AviParser.parse(textoReconocido, allowedVias)
+                AviParser.parse(
+                    textoInterpretado,
+                    allowedVias
+                )
             }
+
+            val parsed = parsedBase.copy(
+                textoOriginal = originalPrevio.ifBlank {
+                    dictadoOriginal
+                }
+            )
 
             lastParsedCommand = parsed
             accionInput = parsed.accion
