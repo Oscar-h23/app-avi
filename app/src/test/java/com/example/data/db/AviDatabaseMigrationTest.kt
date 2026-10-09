@@ -149,9 +149,8 @@ class AviDatabaseMigrationTest {
             val columns =
                 mutableSetOf<String>()
 
-            sqlite.rawQuery(
-                "PRAGMA table_info(incidencias)",
-                null
+            sqlite.query(
+                "PRAGMA table_info(incidencias)"
             ).use { cursor ->
                 while (
                     cursor.moveToNext()
@@ -177,9 +176,8 @@ class AviDatabaseMigrationTest {
 
             var indexFound = false
 
-            sqlite.rawQuery(
-                "PRAGMA index_list(incidencias)",
-                null
+            sqlite.query(
+                "PRAGMA index_list(incidencias)"
             ).use { cursor ->
                 while (
                     cursor.moveToNext()
