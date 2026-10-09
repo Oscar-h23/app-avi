@@ -94,6 +94,8 @@ import com.example.parser.AviParser
 import com.example.util.AviDateUtils
 import com.example.voice.AviSpeechManager
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class FloatingBubbleService : Service() {
@@ -130,7 +132,7 @@ class FloatingBubbleService : Service() {
         startForegroundNotification()
         setupFloatingOverlay()
 
-        isRunning = true
+        setRunningState(true)
     }
 
     private fun startForegroundNotification() {
@@ -285,7 +287,7 @@ class FloatingBubbleService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        isRunning = false
+        setRunningState(false)
         speechManager.destroy()
         if (overlayView != null) {
             windowManager?.removeView(overlayView)
@@ -298,8 +300,17 @@ class FloatingBubbleService : Service() {
 
     companion object {
         const val NOTIFICATION_ID = 1001
+
+        private val _runningState = MutableStateFlow(false)
+        val runningState: StateFlow<Boolean> = _runningState.asStateFlow()
+
         var isRunning = false
             private set
+
+        private fun setRunningState(running: Boolean) {
+            isRunning = running
+            _runningState.value = running
+        }
 
         fun start(context: Context) {
             val intent = Intent(context, FloatingBubbleService::class.java)
@@ -433,7 +444,18 @@ fun FloatingOverlayContent(
                         onDrag(dragAmount.x, dragAmount.y)
                     }
                 }
-                .clickable { onExpandToggle() }
+                .clickable {
+                    // Un toque en la burbuja ya no solo abre el panel:
+                    // también deja AVIX escuchando inmediatamente.
+                    onExpandToggle()
+
+                    if (!voiceState.isListening) {
+                        fechaHoraEventoCapturada =
+                            AviDateUtils.nowLimaIso()
+                        mensajeRegistro = null
+                        speechManager.startListening()
+                    }
+                }
         ) {
             Box(
                 contentAlignment = Alignment.Center,
