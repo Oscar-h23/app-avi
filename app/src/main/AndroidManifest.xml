@@ -44,6 +44,21 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Overlay voice assistant for incident registration" />
         </service>
+
+        <!--
+            AviApplication implementa Configuration.Provider, por lo que
+            WorkManager se inicializa bajo demanda. Eliminar únicamente su
+            initializer de App Startup evita una doble inicialización.
+        -->
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                android:value="androidx.startup"
+                tools:node="remove" />
+        </provider>
     </application>
 
 </manifest>
