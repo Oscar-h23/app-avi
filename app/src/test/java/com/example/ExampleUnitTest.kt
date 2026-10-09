@@ -8,6 +8,7 @@ import com.example.model.LoginResponse
 import com.example.parser.AviParser
 import com.example.parser.AviCommandStage
 import com.example.util.AviDateUtils
+import com.example.voice.AdaptiveVoiceActivityDetector
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.runBlocking
@@ -865,6 +866,108 @@ class ExampleUnitTest {
 
         assertEquals("Q1Z505", result.placa)
         assertTrue(result.valido)
+    }
+
+    @Test
+    fun testVadCalibraDetectaVozYCierraPorSilencio() {
+        val vad = AdaptiveVoiceActivityDetector(
+            calibrationFrames = 3,
+            speechStartFrames = 2,
+            endSilenceFrames = 3,
+            minSpeechFrames = 2,
+            maxSpeechFrames = 50,
+            maxWaitingFrames = 50
+        )
+
+        vad.process(-40f)
+        vad.process(-41f)
+        val calibrated = vad.process(-39f)
+
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH,
+            calibrated.phase
+        )
+
+        vad.process(-30f)
+        val started = vad.process(-29f)
+
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.SPEECH,
+            started.phase
+        )
+        assertTrue(started.speechStarted)
+
+        vad.process(-28f)
+        vad.process(-29f)
+        vad.process(-45f)
+        vad.process(-46f)
+        val ended = vad.process(-44f)
+
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.FINISHED,
+            ended.phase
+        )
+        assertTrue(ended.speechEnded)
+    }
+
+    @Test
+    fun testVadNoConfundeRuidoAltoConVozSinSuperarUmbral() {
+        val vad = AdaptiveVoiceActivityDetector(
+            calibrationFrames = 3,
+            speechStartFrames = 2,
+            endSilenceFrames = 3,
+            minSpeechFrames = 2,
+            maxSpeechFrames = 50,
+            maxWaitingFrames = 50
+        )
+
+        vad.process(-10f)
+        vad.process(-10f)
+        val calibrated = vad.process(-10f)
+
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH,
+            calibrated.phase
+        )
+
+        val noiseOnly = vad.process(-8f)
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH,
+            noiseOnly.phase
+        )
+
+        vad.process(-3f)
+        val voice = vad.process(-3f)
+
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.SPEECH,
+            voice.phase
+        )
+        assertTrue(voice.speechStarted)
+    }
+
+    @Test
+    fun testVadFinalizaSiNuncaApareceVoz() {
+        val vad = AdaptiveVoiceActivityDetector(
+            calibrationFrames = 2,
+            speechStartFrames = 2,
+            endSilenceFrames = 3,
+            minSpeechFrames = 2,
+            maxSpeechFrames = 50,
+            maxWaitingFrames = 3
+        )
+
+        vad.process(-40f)
+        vad.process(-40f)
+        vad.process(-40f)
+        vad.process(-40f)
+        val timeout = vad.process(-40f)
+
+        assertEquals(
+            AdaptiveVoiceActivityDetector.Phase.FINISHED,
+            timeout.phase
+        )
+        assertTrue(timeout.timedOut)
     }
 
     @Test
