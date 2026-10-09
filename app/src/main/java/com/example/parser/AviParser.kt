@@ -57,7 +57,10 @@ object AviParser {
         "uniform" to "U", "uniforme" to "U",
         "victor" to "V",
         "whiskey" to "W", "whisky" to "W", "wisky" to "W", "wiski" to "W",
-        "xray" to "X", "x ray" to "X", "exray" to "X", "equisray" to "X", "equis ray" to "X", "ray" to "X", "equis" to "X",
+        "xray" to "X", "x ray" to "X", "x rey" to "X",
+        "exray" to "X", "ex rey" to "X",
+        "equisray" to "X", "equis ray" to "X", "equis rey" to "X",
+        "ray" to "X", "rey" to "X", "equis" to "X",
         "yankee" to "Y", "yanki" to "Y", "yanqui" to "Y",
         "zulu" to "Z", "sulu" to "Z",
         "a" to "A",
@@ -170,6 +173,7 @@ object AviParser {
         "mike" to "M", "november" to "N", "oscar" to "O", "papa" to "P",
         "quebec" to "Q", "romeo" to "R", "sierra" to "S", "tango" to "T",
         "uniform" to "U", "victor" to "V", "whiskey" to "W",
+        "xray" to "X",
         "yankee" to "Y", "zulu" to "Z"
     )
 
@@ -298,6 +302,10 @@ object AviParser {
         val ranked = canonicalPhoneticMap
             .map { (word, letter) ->
                 Triple(word, letter, editDistance(token, word))
+            }
+            .groupBy { it.second }
+            .mapNotNull { (_, candidates) ->
+                candidates.minByOrNull { it.third }
             }
             .sortedBy { it.third }
 
