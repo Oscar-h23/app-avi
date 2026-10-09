@@ -1780,7 +1780,6 @@ fun PantallaHistorial(repository: IncidentRepository) {
             }
         }
     }
-}
 
     editingIncident?.let { item ->
         EditarIncidenciaDialog(
