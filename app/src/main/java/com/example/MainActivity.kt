@@ -1664,8 +1664,10 @@ fun PantallaHistorial(repository: IncidentRepository) {
     val incidents by repository.incidentsFlow.collectAsState(initial = emptyList())
     val isSyncing by repository.isSyncing.collectAsState()
     val lastSyncSummary by repository.lastSyncSummary.collectAsState()
+    val allowedVias by repository.allowedVias.collectAsState()
 
     var filtroSeleccionado by remember { mutableStateOf(FiltroHistorial.TODOS) }
+    var editingIncident by remember { mutableStateOf<Incident?>(null) }
 
     val incidentesFiltrados = remember(incidents, filtroSeleccionado) {
         when (filtroSeleccionado) {
@@ -1768,19 +1770,280 @@ fun PantallaHistorial(repository: IncidentRepository) {
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 items(incidentesFiltrados, key = { it.id }) { item ->
-                    IncidenteCard(item = item, onDelete = {
-                        scope.launch {
-                            repository.eliminarIncidencia(item.id)
+                    IncidenteCard(
+                        item = item,
+                        onEdit = {
+                            editingIncident = item
                         }
-                    })
+                    )
                 }
             }
         }
     }
 }
 
+    editingIncident?.let { item ->
+        EditarIncidenciaDialog(
+            repository = repository,
+            item = item,
+            allowedVias = allowedVias,
+            onDismiss = {
+                editingIncident = null
+            },
+            onSaved = {
+                editingIncident = null
+            }
+        )
+    }
+}
+
 @Composable
-fun IncidenteCard(item: Incident, onDelete: () -> Unit) {
+fun EditarIncidenciaDialog(
+    repository: IncidentRepository,
+    item: Incident,
+    allowedVias: Set<Int>,
+    onDismiss: () -> Unit,
+    onSaved: () -> Unit
+) {
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
+    var placaInput by remember(item.id) {
+        mutableStateOf(item.placa)
+    }
+    var viaInput by remember(item.id) {
+        mutableStateOf(item.via?.toString() ?: "")
+    }
+    var accionInput by remember(item.id) {
+        mutableStateOf(item.accion)
+    }
+    var viaMenuExpanded by remember(item.id) {
+        mutableStateOf(false)
+    }
+    var isSaving by remember(item.id) {
+        mutableStateOf(false)
+    }
+    var errorMessage by remember(item.id) {
+        mutableStateOf<String?>(null)
+    }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = {
+            if (!isSaving) onDismiss()
+        },
+        title = {
+            Column {
+                Text(
+                    text = "Editar registro",
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = if (
+                        item.estadoSincronizacion ==
+                        EstadoSincronizacion.SINCRONIZADO
+                    ) {
+                        "La corrección también se actualizará en SIGO."
+                    } else {
+                        "Se guardará localmente y quedará pendiente de sincronización."
+                    },
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Acción",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = accionInput == "FUGA",
+                        onClick = {
+                            accionInput = "FUGA"
+                            errorMessage = null
+                        },
+                        label = { Text("FUGA") },
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = accionInput == "DERIVADO",
+                        onClick = {
+                            accionInput = "DERIVADO"
+                            errorMessage = null
+                        },
+                        label = { Text("DERIVADO") },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = placaInput,
+                    onValueChange = {
+                        placaInput = it
+                            .uppercase()
+                            .replace(" ", "")
+                            .replace("-", "")
+                            .take(6)
+                        errorMessage = null
+                    },
+                    label = { Text("Placa") },
+                    placeholder = { Text("Ej: I1L110") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (allowedVias.isNotEmpty()) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = {
+                                viaMenuExpanded = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = viaInput.toIntOrNull()
+                                    ?.let { "Vía $it" }
+                                    ?: "Seleccionar vía",
+                                modifier = Modifier.weight(1f),
+                                textAlign = TextAlign.Start
+                            )
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowDown,
+                                contentDescription = null
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = viaMenuExpanded,
+                            onDismissRequest = {
+                                viaMenuExpanded = false
+                            }
+                        ) {
+                            allowedVias.sorted().forEach { via ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("Vía $via")
+                                    },
+                                    onClick = {
+                                        viaInput = via.toString()
+                                        viaMenuExpanded = false
+                                        errorMessage = null
+                                    }
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    OutlinedTextField(
+                        value = viaInput,
+                        onValueChange = {
+                            if (it.all { ch -> ch.isDigit() }) {
+                                viaInput = it
+                                errorMessage = null
+                            }
+                        },
+                        label = { Text("Vía") },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number
+                        ),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
+                errorMessage?.let { message ->
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = message,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    val via = viaInput.toIntOrNull()
+
+                    if (!AviParser.isValidPeruPlate(placaInput)) {
+                        errorMessage = "La placa no tiene un formato válido."
+                        return@Button
+                    }
+
+                    if (via == null || via <= 0) {
+                        errorMessage = "Seleccione una vía válida."
+                        return@Button
+                    }
+
+                    isSaving = true
+                    errorMessage = null
+
+                    scope.launch {
+                        val result = repository.actualizarIncidencia(
+                            id = item.id,
+                            placa = placaInput,
+                            via = via,
+                            accion = accionInput
+                        )
+
+                        isSaving = false
+
+                        if (result.isSuccess) {
+                            Toast.makeText(
+                                context,
+                                "Registro actualizado",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                            onSaved()
+                        } else {
+                            errorMessage =
+                                result.exceptionOrNull()?.message
+                                    ?: "No se pudo actualizar el registro."
+                        }
+                    }
+                },
+                enabled = !isSaving
+            ) {
+                if (isSaving) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                }
+                Text(if (isSaving) "Guardando..." else "Guardar")
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                enabled = !isSaving
+            ) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
+
+@Composable
+fun IncidenteCard(
+    item: Incident,
+    onEdit: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
@@ -1879,6 +2142,26 @@ fun IncidenteCard(item: Incident, onDelete: () -> Unit) {
                     text = "Error: ${item.ultimoError}",
                     fontSize = 10.sp,
                     color = Color(0xFFDC2626)
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            OutlinedButton(
+                onClick = onEdit,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(9.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Editar",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
         }
