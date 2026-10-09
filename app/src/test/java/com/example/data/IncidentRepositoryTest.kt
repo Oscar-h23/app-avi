@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import com.example.api.SigoApiService
 import com.example.core.security.SessionState
@@ -9,19 +10,28 @@ import com.example.data.db.IncidentDao
 import com.example.data.db.IncidentEntity
 import com.example.model.LoginRequest
 import com.example.model.LoginResponse
+import com.example.model.ParsedCommand
 import com.example.model.RegistroSigoRequest
 import com.example.model.RegistroSigoResponse
 import com.example.model.RegistroSigoUpdateRequest
 import com.example.model.SigoStatusResponse
 import com.example.model.UsuarioDto
 import com.example.model.ViaDto
+import com.example.ui.registration.RegistrationViewModel
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -76,6 +86,65 @@ class IncidentRepositoryTest {
                 startBackground = false
             )
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun `shared submit gate ignores a double tap while saving`() =
+        runTest {
+            Dispatchers.setMain(
+                StandardTestDispatcher(testScheduler)
+            )
+
+            try {
+                val draft =
+                    RegistrationViewModel(
+                        SavedStateHandle()
+                    )
+
+                draft.newDraft(
+                    repository.currentOwner()
+                )
+
+                val command =
+                    ParsedCommand(
+                        placa = "ABC123",
+                        via = 101,
+                        accion = "FUGA",
+                        textoOriginal = "dictado",
+                        valido = true
+                    )
+
+                var callbacks = 0
+
+                draft.submit(
+                    repository = repository,
+                    command = command,
+                    expectedOwner =
+                        repository.currentOwner()
+                ) {
+                    callbacks++
+                }
+
+                // La segunda pulsación ocurre antes de que termine la primera.
+                draft.submit(
+                    repository = repository,
+                    command = command,
+                    expectedOwner =
+                        repository.currentOwner()
+                ) {
+                    callbacks++
+                }
+
+                advanceUntilIdle()
+
+                assertEquals(1, callbacks)
+                assertEquals(1, dao.size())
+                assertTrue(draft.submitted.value)
+                assertFalse(draft.saving.value)
+            } finally {
+                Dispatchers.resetMain()
+            }
+        }
 
     @Test
     fun `register saves locally without waiting for HTTP`() =
