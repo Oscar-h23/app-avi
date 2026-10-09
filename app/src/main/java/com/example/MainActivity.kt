@@ -2185,9 +2185,7 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
         0
     }
 
-    var urlInput by remember { mutableStateOf(repository.getBaseUrl()) }
-    var isChecking by remember { mutableStateOf(false) }
-
+    var isCheckingConnection by remember { mutableStateOf(false) }
     var isBubbleRunning by remember { mutableStateOf(FloatingBubbleService.isRunning) }
 
     Column(
@@ -2202,7 +2200,7 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
             fontSize = 20.sp
         )
         Text(
-            text = "Ajustes de conexión y servicio flotante",
+            text = "Ajustes de AVIX y servicio flotante",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -2286,7 +2284,7 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Configuración de Backend REST
+        // Estado de conexión automática con SIGO-BACK
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp),
@@ -2294,87 +2292,88 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Conexión a SIGO-BACK",
+                    text = "Conexión a SIGO",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
                 Text(
-                    text = if (urlInput.startsWith("https://sigo-back-production")) {
-                        "Producción • Railway"
-                    } else {
-                        "Modo desarrollo • URL personalizada"
-                    },
+                    text = "AVIX se conecta automáticamente al servidor productivo.",
                     fontSize = 12.sp,
-                    color = if (urlInput.startsWith("https://sigo-back-production")) {
-                        AviStatusOnline
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = { urlInput = it },
-                    label = { Text("URL Base") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Button(
-                    onClick = {
-                        val productionUrl = SigoApiService.PRODUCTION_BASE_URL
-                        urlInput = productionUrl
-                        repository.updateConfig(productionUrl)
-                        repository.verificarConexionSigo()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Text("Usar SIGO Producción", fontSize = 11.sp)
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            urlInput = SigoApiService.EMULATOR_BASE_URL
-                        },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Text("Emulador", fontSize = 10.sp)
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = when (connectionState) {
+                        ApiConnectionState.ONLINE -> Color(0xFFECFDF5)
+                        ApiConnectionState.OFFLINE -> Color(0xFFFEF2F2)
+                        ApiConnectionState.SIN_CONFIGURAR -> Color(0xFFFFFBEB)
                     }
-                    OutlinedButton(
-                        onClick = {
-                            urlInput = SigoApiService.LOCAL_MAC_BASE_URL
-                        },
-                        modifier = Modifier.weight(1f)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("Mac local", fontSize = 10.sp)
+                        Icon(
+                            imageVector = if (connectionState == ApiConnectionState.ONLINE) {
+                                Icons.Default.CheckCircle
+                            } else {
+                                Icons.Default.Warning
+                            },
+                            contentDescription = null,
+                            tint = when (connectionState) {
+                                ApiConnectionState.ONLINE -> AviStatusOnline
+                                ApiConnectionState.OFFLINE -> Color(0xFFDC2626)
+                                ApiConnectionState.SIN_CONFIGURAR -> Color(0xFFD97706)
+                            },
+                            modifier = Modifier.size(18.dp)
+                        )
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Text(
+                            text = connectionState.label,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = when (connectionState) {
+                                ApiConnectionState.ONLINE -> AviStatusOnline
+                                ApiConnectionState.OFFLINE -> Color(0xFFDC2626)
+                                ApiConnectionState.SIN_CONFIGURAR -> Color(0xFFD97706)
+                            }
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
-                Button(
+                OutlinedButton(
                     onClick = {
-                        isChecking = true
-                        repository.updateConfig(urlInput)
+                        isCheckingConnection = true
                         repository.verificarConexionSigo()
-                        isChecking = false
-                        Toast.makeText(context, "Configuración actualizada", Toast.LENGTH_SHORT).show()
+                        isCheckingConnection = false
                     },
+                    enabled = !isCheckingConnection,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Guardar y Probar Conexión")
+                    if (isCheckingConnection) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        if (isCheckingConnection) {
+                            "Comprobando..."
+                        } else {
+                            "Comprobar conexión"
+                        }
+                    )
                 }
             }
         }
