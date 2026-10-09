@@ -853,13 +853,15 @@ class IncidentRepository internal constructor(
             syncMutex.withLock<Pair<SyncOutcome, Int>> {
                 val token =
                     sessionManager.getToken()
-                        ?: return@withLock
+                        ?: return@withLock (
                             SyncOutcome.AUTH_REQUIRED to 0
+                        )
 
                 val owner =
                     currentOwner()
-                        ?: return@withLock
+                        ?: return@withLock (
                             SyncOutcome.AUTH_REQUIRED to 0
+                        )
 
                 val client =
                     apiFactory(
@@ -881,8 +883,9 @@ class IncidentRepository internal constructor(
                         _lastSyncSummary.value =
                             "No hay registros pendientes."
 
-                        return@withLock
+                        return@withLock (
                             SyncOutcome.COMPLETE to 0
+                        )
                     }
 
                     _lastSyncSummary.value =
@@ -896,8 +899,9 @@ class IncidentRepository internal constructor(
                             currentOwner() != owner ||
                             sessionManager.getToken() != token
                         ) {
-                            return@withLock
+                            return@withLock (
                                 SyncOutcome.AUTH_REQUIRED to confirmed
+                            )
                         }
 
                         val sent =
@@ -926,8 +930,9 @@ class IncidentRepository internal constructor(
                         if (
                             sessionManager.getToken() == null
                         ) {
-                            return@withLock
+                            return@withLock (
                                 SyncOutcome.AUTH_REQUIRED to confirmed
+                            )
                         }
                     }
 
@@ -941,8 +946,9 @@ class IncidentRepository internal constructor(
                             SyncOutcome.COMPLETE
                         }
 
-                    return@withLock
+                    return@withLock (
                         outcome to confirmed
+                    )
                 } finally {
                     _isSyncing.value = false
                 }
