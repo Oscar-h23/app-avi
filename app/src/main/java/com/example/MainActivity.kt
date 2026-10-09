@@ -133,6 +133,7 @@ import com.example.model.DiagnosticStage
 import com.example.model.EstadoSincronizacion
 import com.example.model.Incident
 import com.example.model.ParsedCommand
+import com.example.model.VoiceState
 import com.example.parser.AviParser
 import com.example.service.FloatingBubbleService
 import com.example.ui.registration.PlateConfidenceHint
@@ -1544,22 +1545,40 @@ fun PantallaConfirmacion(
     repository: IncidentRepository,
     parsedCommand: ParsedCommand,
     fechaHoraEvento: String,
+    draft: RegistrationViewModel,
+    voiceState: VoiceState,
     onConfirmado: () -> Unit,
     onCorregir: () -> Unit,
     onCancelar: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
+    val isSaving by draft.saving.collectAsStateWithLifecycle()
+    val submitted by draft.submitted.collectAsStateWithLifecycle()
 
-    var placaInput by remember { mutableStateOf(parsedCommand.placa) }
-    var viaInput by remember { mutableStateOf(parsedCommand.via?.toString() ?: "") }
-    var accionInput by remember { mutableStateOf(parsedCommand.accion) }
-    var textoOriginalInput by remember { mutableStateOf(parsedCommand.textoOriginal) }
+    val recognizedPlate = rememberSaveable {
+        parsedCommand.placa
+    }
 
-    var isSaving by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var viaMenuExpanded by remember { mutableStateOf(false) }
+    var placaInput by rememberSaveable {
+        mutableStateOf(parsedCommand.placa)
+    }
+    var viaInput by rememberSaveable {
+        mutableStateOf(parsedCommand.via?.toString() ?: "")
+    }
+    var accionInput by rememberSaveable {
+        mutableStateOf(parsedCommand.accion)
+    }
+    var textoOriginalInput by rememberSaveable {
+        mutableStateOf(parsedCommand.textoOriginal)
+    }
+
+    var errorMessage by remember {
+        mutableStateOf<String?>(null)
+    }
+    var viaMenuExpanded by remember {
+        mutableStateOf(false)
+    }
 
     Column(
         modifier = Modifier
@@ -1721,7 +1740,13 @@ fun PantallaConfirmacion(
                 // Campo PLACA
                 OutlinedTextField(
                     value = placaInput,
-                    onValueChange = { placaInput = it.uppercase().replace(" ", "").replace("-", "") },
+                    onValueChange = {
+                        placaInput = it
+                            .uppercase()
+                            .replace(" ", "")
+                            .replace("-", "")
+                        errorMessage = null
+                    },
                     label = { Text("Placa del Vehículo") },
                     placeholder = { Text("Ej: BTL245 o A1B234") },
                     singleLine = true,
@@ -1730,9 +1755,35 @@ fun PantallaConfirmacion(
                         .testTag("plate_input_field"),
                     trailingIcon = {
                         if (AviParser.isValidPeruPlate(placaInput)) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = AviStatusOnline)
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = AviStatusOnline
+                            )
                         }
                     }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                PlateConfidenceHint(
+                    plate = placaInput,
+                    confidence =
+                        voiceState
+                            .platePositionConfidence
+                            .mapIndexed {
+                                    index,
+                                    confidence ->
+                                if (
+                                    placaInput.getOrNull(index) !=
+                                    recognizedPlate.getOrNull(index)
+                                ) {
+                                    1f
+                                } else {
+                                    confidence
+                                }
+                            },
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -1887,26 +1938,40 @@ fun PantallaConfirmacion(
                     finalAction = accionInput
                 )
 
-                isSaving = true
                 errorMessage = null
-                scope.launch {
-                    val resultado = repository.registrarIncidencia(
-                        placa = placaInput,
-                        via = viaNum,
-                        accion = accionInput,
-                        fechaHoraEvento = fechaHoraEvento,
-                        textoReconocido = textoOriginalInput
-                    )
-                    isSaving = false
+
+                val finalCommand = ParsedCommand(
+                    placa = placaInput,
+                    via = viaNum,
+                    accion = accionInput,
+                    textoOriginal = textoOriginalInput,
+                    valido = true
+                )
+
+                draft.setEventTime(fechaHoraEvento)
+                draft.updateDraft(finalCommand)
+                draft.submit(
+                    repository = repository,
+                    command = finalCommand,
+                    expectedOwner =
+                        draft.expectedOwner()
+                            ?: repository.currentOwner()
+                ) { resultado ->
                     if (resultado.isSuccess) {
-                        Toast.makeText(context, "Incidencia registrada con éxito.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            context,
+                            "Guardado en dispositivo. AVIX lo enviará a SIGO en segundo plano.",
+                            Toast.LENGTH_LONG
+                        ).show()
                         onConfirmado()
                     } else {
-                        errorMessage = resultado.exceptionOrNull()?.message ?: "Error al registrar incidencia."
+                        errorMessage =
+                            resultado.exceptionOrNull()?.message
+                                ?: "Error al guardar la incidencia."
                     }
                 }
             },
-            enabled = !isSaving,
+            enabled = !isSaving && !submitted,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(52.dp)
@@ -1917,11 +1982,15 @@ fun PantallaConfirmacion(
             if (isSaving) {
                 CircularProgressIndicator(modifier = Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
                 Spacer(modifier = Modifier.width(10.dp))
-                Text("Guardando...")
+                Text("Guardando en dispositivo...")
             } else {
                 Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("CONFIRMAR Y REGISTRAR", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    if (submitted) "GUARDADO" else "GUARDAR REGISTRO",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
             }
         }
 
