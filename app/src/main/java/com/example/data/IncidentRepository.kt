@@ -20,6 +20,7 @@ import com.example.model.UsuarioDto
 import com.example.parser.AviParser
 import com.example.worker.SyncRegistroWorker
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -76,6 +77,8 @@ class IncidentRepository internal constructor(
     private val enqueueSync: () -> Unit = {
         SyncRegistroWorker.enqueueImmediateSync(context)
     },
+    private val ioDispatcher: CoroutineDispatcher =
+        Dispatchers.IO,
     startBackground: Boolean = true
 ) {
 
@@ -90,7 +93,7 @@ class IncidentRepository internal constructor(
 
     private val scope =
         CoroutineScope(
-            SupervisorJob() + Dispatchers.IO
+            SupervisorJob() + ioDispatcher
         )
 
     private val syncMutex = Mutex()
@@ -273,7 +276,7 @@ class IncidentRepository internal constructor(
     suspend fun login(
         codigo: Int
     ): Result<LoginResponse> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             if (codigo <= 0) {
                 return@withContext Result.failure(
                     IllegalArgumentException(
@@ -626,7 +629,7 @@ class IncidentRepository internal constructor(
         expectedOwner: IncidentOwner? =
             currentOwner()
     ): Result<Incident> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 val owner =
                     currentOwner()
@@ -849,7 +852,7 @@ class IncidentRepository internal constructor(
 
     private suspend fun sync():
         Pair<SyncOutcome, Int> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             syncMutex.withLock {
                 val token =
                     sessionManager.getToken()
@@ -1007,7 +1010,7 @@ class IncidentRepository internal constructor(
         via: Int?,
         accion: String
     ): Result<Incident> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             syncMutex.withLock {
                 try {
                     val owner =
@@ -1171,7 +1174,7 @@ class IncidentRepository internal constructor(
         via: Int? = null,
         accion: String? = null
     ): Result<List<RegistroSigoResponse>> =
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             try {
                 val token =
                     requireNotNull(
@@ -1220,7 +1223,7 @@ class IncidentRepository internal constructor(
     suspend fun eliminarIncidencia(
         id: String
     ) {
-        withContext(Dispatchers.IO) {
+        withContext(ioDispatcher) {
             syncMutex.withLock {
                 val owner =
                     requireNotNull(
