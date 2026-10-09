@@ -13,91 +13,167 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.example.data.IncidentRepository
+import com.example.data.SyncOutcome
+import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 class SyncRegistroWorker(
     appContext: Context,
     workerParams: WorkerParameters
-) : CoroutineWorker(appContext, workerParams) {
+) : CoroutineWorker(
+    appContext,
+    workerParams
+) {
 
-    override suspend fun doWork(): Result {
-        Log.d(TAG, "Iniciando SyncRegistroWorker en segundo plano...")
+    override suspend fun doWork():
+        Result {
+        Log.d(
+            TAG,
+            "Iniciando sincronización AVIX."
+        )
 
-        val repository = IncidentRepository.getInstance(applicationContext)
+        val repository =
+            IncidentRepository.getInstance(
+                applicationContext
+            )
 
         return try {
-            val exito = repository.sincronizarPendientesDesdeWorker()
-            if (exito) {
-                Log.d(TAG, "SyncRegistroWorker finalizado con éxito.")
-                Result.success()
-            } else {
-                Log.w(TAG, "SyncRegistroWorker encontró fallos temporales. Programando reintento.")
-                Result.retry()
+            when (
+                repository
+                    .sincronizarPendientesDesdeWorker()
+            ) {
+                SyncOutcome.COMPLETE -> {
+                    Log.d(
+                        TAG,
+                        "Cola AVIX procesada."
+                    )
+                    Result.success()
+                }
+
+                SyncOutcome.AUTH_REQUIRED -> {
+                    // El login vuelve a programar la cola del propietario.
+                    Log.i(
+                        TAG,
+                        "Sincronización pausada hasta renovar sesión."
+                    )
+                    Result.success()
+                }
+
+                SyncOutcome.RETRY -> {
+                    Log.w(
+                        TAG,
+                        "Fallo temporal; WorkManager reintentará."
+                    )
+                    Result.retry()
+                }
             }
+        } catch (
+            e: CancellationException
+        ) {
+            throw e
         } catch (e: Exception) {
-            Log.e(TAG, "Error en SyncRegistroWorker: ${e.message}", e)
+            Log.e(
+                TAG,
+                "Error temporal en sincronización: ${e.message}",
+                e
+            )
             Result.retry()
         }
     }
 
     companion object {
-        private const val TAG = "SyncRegistroWorker"
-        private const val UNIQUE_ONE_TIME_WORK = "avi_sync_pending_one_time"
-        private const val UNIQUE_PERIODIC_WORK = "avi_sync_periodic"
+        private const val TAG =
+            "SyncRegistroWorker"
 
-        /**
-         * Programa una sincronización inmediata cuando haya conectividad a internet.
-         */
-        fun enqueueImmediateSync(context: Context) {
+        private const val UNIQUE_ONE_TIME_WORK =
+            "avi_sync_pending_one_time"
+
+        private const val UNIQUE_PERIODIC_WORK =
+            "avi_sync_periodic"
+
+        fun enqueueImmediateSync(
+            context: Context
+        ) {
             try {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
+                val constraints =
+                    Constraints.Builder()
+                        .setRequiredNetworkType(
+                            NetworkType.CONNECTED
+                        )
+                        .build()
 
-                val syncRequest = OneTimeWorkRequestBuilder<SyncRegistroWorker>()
-                    .setConstraints(constraints)
-                    .setBackoffCriteria(
-                        BackoffPolicy.EXPONENTIAL,
-                        15,
-                        TimeUnit.SECONDS
+                val syncRequest =
+                    OneTimeWorkRequestBuilder<
+                        SyncRegistroWorker
+                        >()
+                        .setConstraints(
+                            constraints
+                        )
+                        .setBackoffCriteria(
+                            BackoffPolicy.EXPONENTIAL,
+                            15,
+                            TimeUnit.SECONDS
+                        )
+                        .build()
+
+                // Serializa operaciones y evita reemplazar una ejecución activa.
+                WorkManager
+                    .getInstance(context)
+                    .enqueueUniqueWork(
+                        UNIQUE_ONE_TIME_WORK,
+                        ExistingWorkPolicy
+                            .APPEND_OR_REPLACE,
+                        syncRequest
                     )
-                    .build()
-
-                WorkManager.getInstance(context).enqueueUniqueWork(
-                    UNIQUE_ONE_TIME_WORK,
-                    ExistingWorkPolicy.REPLACE,
-                    syncRequest
-                )
             } catch (e: Exception) {
-                Log.w(TAG, "WorkManager no disponible para sincronización inmediata: ${e.message}")
+                Log.w(
+                    TAG,
+                    "WorkManager no disponible: ${e.message}"
+                )
             }
         }
 
-        /**
-         * Programa una sincronización periódica cada 15 minutos en segundo plano si hay red.
-         */
-        fun schedulePeriodicSync(context: Context) {
+        fun schedulePeriodicSync(
+            context: Context
+        ) {
             try {
-                val constraints = Constraints.Builder()
-                    .setRequiredNetworkType(NetworkType.CONNECTED)
-                    .build()
+                val constraints =
+                    Constraints.Builder()
+                        .setRequiredNetworkType(
+                            NetworkType.CONNECTED
+                        )
+                        .build()
 
-                val periodicRequest = PeriodicWorkRequestBuilder<SyncRegistroWorker>(15, TimeUnit.MINUTES)
-                    .setConstraints(constraints)
-                    .setBackoffCriteria(
-                        BackoffPolicy.EXPONENTIAL,
-                        30,
-                        TimeUnit.SECONDS
+                val periodicRequest =
+                    PeriodicWorkRequestBuilder<
+                        SyncRegistroWorker
+                        >(
+                        15,
+                        TimeUnit.MINUTES
                     )
-                    .build()
+                        .setConstraints(
+                            constraints
+                        )
+                        .setBackoffCriteria(
+                            BackoffPolicy.EXPONENTIAL,
+                            30,
+                            TimeUnit.SECONDS
+                        )
+                        .build()
 
-                WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-                    UNIQUE_PERIODIC_WORK,
-                    ExistingPeriodicWorkPolicy.KEEP,
-                    periodicRequest
-                )
+                WorkManager
+                    .getInstance(context)
+                    .enqueueUniquePeriodicWork(
+                        UNIQUE_PERIODIC_WORK,
+                        ExistingPeriodicWorkPolicy
+                            .KEEP,
+                        periodicRequest
+                    )
             } catch (e: Exception) {
-                Log.w(TAG, "WorkManager no disponible para sincronización periódica: ${e.message}")
+                Log.w(
+                    TAG,
+                    "Sincronización periódica no disponible: ${e.message}"
+                )
             }
         }
     }

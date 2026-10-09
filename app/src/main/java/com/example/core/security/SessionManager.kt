@@ -14,96 +14,192 @@ import kotlinx.coroutines.flow.asStateFlow
 data class SessionState(
     val isLoggedIn: Boolean = false,
     val token: String? = null,
-    val usuario: UsuarioDto? = null
+    val usuario: UsuarioDto? = null,
+    val expiresAt: Long? = null,
+    val requiresLogin: Boolean = false
 )
 
-class SessionManager(private val context: Context) {
+interface SessionStore {
+    val sessionState: StateFlow<SessionState>
 
-    private val prefs: SharedPreferences = createEncryptedOrFallbackPrefs(context)
+    fun saveSession(response: LoginResponse)
+    fun getToken(): String?
+    fun getUsuario(): UsuarioDto? = sessionState.value.usuario
+    fun isLoggedIn(): Boolean = getToken() != null
+    fun clearSession()
+    fun expireSession()
+}
 
-    private val _sessionState = MutableStateFlow(loadCurrentState())
-    val sessionState: StateFlow<SessionState> = _sessionState.asStateFlow()
+class SessionManager(context: Context) : SessionStore {
 
-    private fun loadCurrentState(): SessionState {
-        val token = prefs.getString(KEY_TOKEN, null)
-        val hasSession = !token.isNullOrBlank()
-        val user = if (hasSession) {
-            UsuarioDto(
-                id = if (prefs.contains(KEY_USER_ID)) prefs.getLong(KEY_USER_ID, 0L) else null,
-                codigo = if (prefs.contains(KEY_USER_CODIGO)) prefs.getInt(KEY_USER_CODIGO, 0) else null,
-                nombre = prefs.getString(KEY_USER_NOMBRE, null),
-                rol = prefs.getString(KEY_USER_ROL, "OPERADOR"),
-                plazaId = if (prefs.contains(KEY_USER_PLAZA_ID)) prefs.getLong(KEY_USER_PLAZA_ID, 0L) else null,
-                plaza = prefs.getString(KEY_USER_PLAZA, null)
-            )
-        } else null
+    /**
+     * Nunca degradar a SharedPreferences en texto plano.
+     *
+     * Si Android Keystore no está disponible, la sesión seguirá funcionando
+     * únicamente en memoria hasta que el proceso termine.
+     */
+    private val prefs: SharedPreferences? = try {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
 
-        return SessionState(
-            isLoggedIn = hasSession,
-            token = token,
-            usuario = user
+        EncryptedSharedPreferences.create(
+            context,
+            PREFS_FILE_SECURE,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    } catch (e: Exception) {
+        Log.w(
+            TAG,
+            "Almacenamiento seguro no disponible; sesión solo en memoria: ${e.message}"
+        )
+        null
+    }
+
+    init {
+        // Versiones antiguas podían usar un fallback sin cifrar. No se reutiliza.
+        context.getSharedPreferences(
+            PREFS_FILE_FALLBACK,
+            Context.MODE_PRIVATE
+        ).edit().clear().commit()
+    }
+
+    private val _sessionState = MutableStateFlow(load())
+    override val sessionState: StateFlow<SessionState> =
+        _sessionState.asStateFlow()
+
+    private fun load(): SessionState {
+        val securePrefs = prefs ?: return SessionState()
+
+        return try {
+            val token = securePrefs.getString(KEY_TOKEN, null)
+            val expiresAt = securePrefs.getLong(KEY_EXPIRES_AT, 0L)
+
+            if (
+                token.isNullOrBlank() ||
+                expiresAt <= System.currentTimeMillis()
+            ) {
+                securePrefs.edit().clear().commit()
+                SessionState()
+            } else {
+                SessionState(
+                    isLoggedIn = true,
+                    token = token,
+                    usuario = UsuarioDto(
+                        id = securePrefs
+                            .getLong(KEY_USER_ID, 0L)
+                            .takeIf { it > 0L },
+                        codigo = securePrefs
+                            .getInt(KEY_USER_CODIGO, 0)
+                            .takeIf { it > 0 },
+                        nombre = securePrefs
+                            .getString(KEY_USER_NOMBRE, null),
+                        rol = securePrefs
+                            .getString(KEY_USER_ROL, null),
+                        plazaId = securePrefs
+                            .getLong(KEY_USER_PLAZA_ID, 0L)
+                            .takeIf { it > 0L },
+                        plaza = securePrefs
+                            .getString(KEY_USER_PLAZA, null)
+                    ),
+                    expiresAt = expiresAt,
+                    requiresLogin = false
+                )
+            }
+        } catch (_: Exception) {
+            SessionState()
+        }
+    }
+
+    @Synchronized
+    override fun saveSession(response: LoginResponse) {
+        require(response.token.isNotBlank()) {
+            "SIGO no devolvió una sesión válida."
+        }
+
+        val expiresAt = response.expiresIn
+            ?.takeIf { it > 0L && it <= MAX_SERVER_SESSION_SECONDS }
+            ?.let {
+                System.currentTimeMillis() + (it * 1000L)
+            }
+
+        val user = response.usuario
+
+        // Eliminar por completo la identidad anterior antes de guardar la nueva.
+        prefs?.edit()?.clear()?.apply {
+            // Si el backend no informa vencimiento, no persistir el token.
+            if (expiresAt != null) {
+                putString(KEY_TOKEN, response.token)
+                putLong(KEY_EXPIRES_AT, expiresAt)
+
+                user?.id?.let {
+                    putLong(KEY_USER_ID, it)
+                }
+                user?.codigo?.let {
+                    putInt(KEY_USER_CODIGO, it)
+                }
+                putString(KEY_USER_NOMBRE, user?.nombre)
+                putString(KEY_USER_ROL, user?.rol)
+                user?.plazaId?.let {
+                    putLong(KEY_USER_PLAZA_ID, it)
+                }
+                putString(KEY_USER_PLAZA, user?.plaza)
+            }
+        }?.commit()
+
+        _sessionState.value = SessionState(
+            isLoggedIn = true,
+            token = response.token,
+            usuario = user,
+            expiresAt = expiresAt,
+            requiresLogin = false
         )
     }
 
-    fun saveSession(loginResponse: LoginResponse) {
-        val editor = prefs.edit()
-        editor.putString(KEY_TOKEN, loginResponse.token)
-        editor.putString(KEY_TIPO, loginResponse.tipo)
-        loginResponse.expiresIn?.let { editor.putLong(KEY_EXPIRES_IN, it) }
+    @Synchronized
+    override fun getToken(): String? {
+        val current = _sessionState.value
 
-        loginResponse.usuario?.let { u ->
-            u.id?.let { editor.putLong(KEY_USER_ID, it) }
-            u.codigo?.let { editor.putInt(KEY_USER_CODIGO, it) }
-            u.nombre?.let { editor.putString(KEY_USER_NOMBRE, it) }
-            u.rol?.let { editor.putString(KEY_USER_ROL, it) }
-            u.plazaId?.let { editor.putLong(KEY_USER_PLAZA_ID, it) }
-            u.plaza?.let { editor.putString(KEY_USER_PLAZA, it) }
+        if (
+            current.expiresAt?.let {
+                it <= System.currentTimeMillis()
+            } == true
+        ) {
+            expireSession()
         }
-        editor.apply()
 
-        _sessionState.value = loadCurrentState()
+        return _sessionState.value.token
     }
 
-    fun getToken(): String? {
-        return prefs.getString(KEY_TOKEN, null)
+    @Synchronized
+    override fun clearSession() {
+        prefs?.edit()?.clear()?.commit()
+        _sessionState.value = SessionState()
     }
 
-    fun getUsuario(): UsuarioDto? {
-        return _sessionState.value.usuario
-    }
+    @Synchronized
+    override fun expireSession() {
+        prefs?.edit()?.clear()?.commit()
 
-    fun isLoggedIn(): Boolean {
-        return _sessionState.value.isLoggedIn
-    }
-
-    /**
-     * Cierra la sesión activa eliminando el token de autenticación.
-     * IMPORTANTE: No elimina los registros pendientes guardados en Room.
-     */
-    fun clearSession() {
-        prefs.edit()
-            .remove(KEY_TOKEN)
-            .remove(KEY_TIPO)
-            .remove(KEY_EXPIRES_IN)
-            .remove(KEY_USER_ID)
-            .remove(KEY_USER_CODIGO)
-            .remove(KEY_USER_NOMBRE)
-            .remove(KEY_USER_ROL)
-            .remove(KEY_USER_PLAZA_ID)
-            .remove(KEY_USER_PLAZA)
-            .apply()
-
-        _sessionState.value = SessionState(isLoggedIn = false, token = null, usuario = null)
+        _sessionState.value = _sessionState.value.copy(
+            isLoggedIn = false,
+            token = null,
+            expiresAt = null,
+            requiresLogin = true
+        )
     }
 
     companion object {
         private const val TAG = "SessionManager"
-        private const val PREFS_FILE_SECURE = "avi_keystore_secure_session"
-        private const val PREFS_FILE_FALLBACK = "avi_fallback_session"
+        private const val PREFS_FILE_SECURE =
+            "avi_keystore_secure_session"
+        private const val PREFS_FILE_FALLBACK =
+            "avi_fallback_session"
 
         private const val KEY_TOKEN = "jwt_token"
-        private const val KEY_TIPO = "jwt_tipo"
-        private const val KEY_EXPIRES_IN = "jwt_expires_in"
+        private const val KEY_EXPIRES_AT = "expires_at"
         private const val KEY_USER_ID = "usuario_id"
         private const val KEY_USER_CODIGO = "usuario_codigo"
         private const val KEY_USER_NOMBRE = "usuario_nombre"
@@ -111,23 +207,7 @@ class SessionManager(private val context: Context) {
         private const val KEY_USER_PLAZA_ID = "usuario_plaza_id"
         private const val KEY_USER_PLAZA = "usuario_plaza"
 
-        private fun createEncryptedOrFallbackPrefs(context: Context): SharedPreferences {
-            return try {
-                val masterKey = MasterKey.Builder(context)
-                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                    .build()
-
-                EncryptedSharedPreferences.create(
-                    context,
-                    PREFS_FILE_SECURE,
-                    masterKey,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                )
-            } catch (e: Exception) {
-                Log.w(TAG, "Keystore no disponible o error en cifrado, usando fallback protegido: ${e.message}")
-                context.getSharedPreferences(PREFS_FILE_FALLBACK, Context.MODE_PRIVATE)
-            }
-        }
+        private const val MAX_SERVER_SESSION_SECONDS =
+            31_536_000L
     }
 }

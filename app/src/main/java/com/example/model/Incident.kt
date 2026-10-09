@@ -6,9 +6,9 @@ import com.squareup.moshi.JsonClass
 import java.util.UUID
 
 enum class EstadoSincronizacion(val label: String) {
-    PENDIENTE("Pendiente"),
-    SINCRONIZANDO("Sincronizando"),
-    SINCRONIZADO("Sincronizado"),
+    PENDIENTE("Guardado en dispositivo"),
+    SINCRONIZANDO("Enviando"),
+    SINCRONIZADO("Confirmado por SIGO"),
     REQUIERE_REVISION("Requiere revisión")
 }
 
@@ -24,7 +24,10 @@ data class Incident(
     val intentosSincronizacion: Int = 0,
     val ultimoError: String? = null,
     val fechaHoraRecepcion: String? = null,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val operatorId: String? = null,
+    val ownerPlazaId: Long? = null,
+    val serverOrigin: String? = null
 )
 
 data class ParsedCommand(
@@ -96,5 +99,6 @@ data class VoiceState(
     val interpretedText: String = "",
     val rmsLevel: Float = 0f,
     val errorMessage: String? = null,
+    val platePositionConfidence: List<Float> = emptyList(),
     val retryCount: Int = 0
 )

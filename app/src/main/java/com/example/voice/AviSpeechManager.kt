@@ -68,6 +68,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     private var primaryRawText = ""
     private var primaryInterpretedText = ""
     private var primaryScore = Int.MIN_VALUE
+    private var primaryPlateConfidence: List<Float> = emptyList()
     private var captureTimeoutRunnable: Runnable? = null
 
     var isRecognizerAvailable = false
@@ -223,10 +224,12 @@ class AviSpeechManager private constructor(private val appContext: Context) {
 
     private fun rememberPrimaryAttempt(
         rawText: String,
-        interpretedText: String
+        interpretedText: String,
+        plateConfidence: List<Float> = emptyList()
     ) {
         primaryRawText = rawText
         primaryInterpretedText = interpretedText
+        primaryPlateConfidence = plateConfidence
         primaryScore = if (interpretedText.isBlank()) {
             Int.MIN_VALUE
         } else {
@@ -241,13 +244,15 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         primaryRawText = ""
         primaryInterpretedText = ""
         primaryScore = Int.MIN_VALUE
+        primaryPlateConfidence = emptyList()
         automaticRetryInProgress = false
     }
 
     private fun publishFinalRecognition(
         rawText: String,
         interpretedText: String,
-        successDescription: String? = null
+        successDescription: String? = null,
+        plateConfidence: List<Float> = emptyList()
     ) {
         if (interpretedText.isBlank()) return
 
@@ -273,6 +278,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 interpretedText
             },
             interpretedText = interpretedText,
+            platePositionConfidence = plateConfidence,
             retryCount = 0,
             errorMessage = if (analysis.parsed.valido) {
                 null
@@ -458,7 +464,8 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 ) {
                     rememberPrimaryAttempt(
                         rawText = rawText,
-                        interpretedText = interpretedText
+                        interpretedText = interpretedText,
+                        plateConfidence = fusion.platePositionConfidence
                     )
 
                     automaticEnhancedRetryAttempted = true
@@ -474,6 +481,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                                 interpretedText
                             },
                             interpretedText = interpretedText,
+                            platePositionConfidence = fusion.platePositionConfidence,
                             retryCount = 1,
                             errorMessage = null
                         )
@@ -515,6 +523,11 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     publishFinalRecognition(
                         rawText = finalRaw,
                         interpretedText = finalText,
+                        plateConfidence = if (useRetry) {
+                            fusion.platePositionConfidence
+                        } else {
+                            primaryPlateConfidence
+                        },
                         successDescription = if (
                             useRetry &&
                             wasEnhancedAttempt
@@ -538,6 +551,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 publishFinalRecognition(
                     rawText = rawText,
                     interpretedText = interpretedText,
+                    plateConfidence = fusion.platePositionConfidence,
                     successDescription = when {
                         analysis.parsed.valido &&
                             fusion.fused ->
@@ -641,6 +655,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             publishFinalRecognition(
                 rawText = primaryRawText,
                 interpretedText = primaryInterpretedText,
+                plateConfidence = primaryPlateConfidence,
                 successDescription =
                     if (wasEnhancedAttempt) {
                         "4/4 El modo reforzado no mejoró el resultado; se conservó el primer intento."
@@ -667,7 +682,9 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             rememberPrimaryAttempt(
                 rawText = _voiceState.value.recognizedText,
                 interpretedText =
-                    _voiceState.value.interpretedText
+                    _voiceState.value.interpretedText,
+                plateConfidence =
+                    _voiceState.value.platePositionConfidence
             )
 
             _voiceState.value =
@@ -787,7 +804,8 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             retryCount = 0,
             errorMessage = null,
             recognizedText = "",
-            interpretedText = ""
+            interpretedText = "",
+            platePositionConfidence = emptyList()
         )
 
         startListeningInternal(

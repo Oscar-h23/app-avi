@@ -354,12 +354,15 @@ object AviParser {
     ): Int {
         val token = tokens.getOrNull(index) ?: return 0
 
-        if (resemblesVia(token)) return 1
-
+        // Primero evaluar alias exactos de dos palabras. "vi" se parece a
+        // "via" por distancia de edición, pero en "vi a" debe consumirse el
+        // par completo antes de aplicar la coincidencia difusa individual.
         val pair = tokens.getOrNull(index + 1)
             ?.let { next -> "$token $next" }
 
-        return if (pair in viaContextPairAliases) 2 else 0
+        if (pair in viaContextPairAliases) return 2
+
+        return if (resemblesVia(token)) 1 else 0
     }
 
     private fun resemblesPlaca(token: String): Boolean {
@@ -1238,6 +1241,14 @@ object AviParser {
         }
 
         if (symbols.isEmpty()) return ""
+
+        // Si el dictado produjo exactamente seis símbolos, conservarlos tal
+        // como fueron interpretados. La validación posterior decide qué
+        // posición es inválida; no debemos "arreglar" silenciosamente una
+        // placa como 1AB234 convirtiéndola en AB234.
+        if (symbols.size == 6) {
+            return symbols.joinToString("")
+        }
 
         // Construir las tres primeras posiciones respetando la estructura:
         // 1 = letra; 2 y 3 = alfanuméricas.
