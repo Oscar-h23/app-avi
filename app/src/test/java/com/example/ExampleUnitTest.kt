@@ -801,6 +801,73 @@ class ExampleUnitTest {
     }
 
     @Test
+    fun testViaSeparadaViASeInterpretaComoVia() {
+        val result = AviParser.parse(
+            "Fuga vi a 101 placa Bravo Tango Lima segundo cuarto quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals(101, result.via)
+        assertEquals("BTL245", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testViaIaSeInterpretaComoVia() {
+        val result = AviParser.parse(
+            "Fuga ia 101 placa Bravo Tango Lima segundo cuarto quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals(101, result.via)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testViaYASeInterpretaComoVia() {
+        val result = AviParser.parse(
+            "Fuga y a 101 placa Bravo Tango Lima segundo cuarto quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals(101, result.via)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testExtraSeInterpretaComoXEnPlaca() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa Extra primero Zulu quinto negativo quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("X1Z505", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testKebeSeInterpretaComoQEnPlaca() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa Kebe primero Zulu quinto negativo quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("Q1Z505", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
+    fun testKevelSeInterpretaComoQEnPlaca() {
+        val result = AviParser.parse(
+            "Fuga vía 101 placa Kevel primero Zulu quinto negativo quinto",
+            allowedVias = setOf(101)
+        )
+
+        assertEquals("Q1Z505", result.placa)
+        assertTrue(result.valido)
+    }
+
+    @Test
     fun testGeneracionUuidUnicoPorEvento() {
         val id1 = UUID.randomUUID().toString()
         val id2 = UUID.randomUUID().toString()
