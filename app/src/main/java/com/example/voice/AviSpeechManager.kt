@@ -626,74 +626,145 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     }
 
     private fun handleSpeechError(errorCode: Int) {
-        val wasEnhanced = enhancedAudioActive
+        val wasEnhancedAttempt =
+            currentAttemptUsesEnhancedAudio
+        val wasAutomaticRetry =
+            automaticRetryInProgress
+
         cleanupEnhancedAudio()
+        currentAttemptUsesEnhancedAudio = false
 
-        // Algunos RecognitionService no admiten EXTRA_AUDIO_SOURCE. Si el modo
-        // reforzado provoca un error de captura/cliente, volver automáticamente
-        // al micrófono administrado por SpeechRecognizer.
         if (
-            wasEnhanced &&
-            !enhancedFallbackAttempted &&
-            errorCode in setOf(
-                SpeechRecognizer.ERROR_AUDIO,
-                SpeechRecognizer.ERROR_CLIENT,
-                SpeechRecognizer.ERROR_NO_MATCH,
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
-                SpeechRecognizer.ERROR_SERVER,
-                SpeechRecognizer.ERROR_NETWORK,
-                SpeechRecognizer.ERROR_NETWORK_TIMEOUT
-            )
+            wasAutomaticRetry &&
+            primaryInterpretedText.isNotBlank()
         ) {
-            enhancedFallbackAttempted = true
-
-            _voiceState.value = _voiceState.value.copy(
-                isListening = false,
-                stageDescription = "Probando micrófono estándar para asegurar compatibilidad...",
-                errorMessage = null
+            publishFinalRecognition(
+                rawText = primaryRawText,
+                interpretedText = primaryInterpretedText,
+                successDescription =
+                    if (wasEnhancedAttempt) {
+                        "4/4 El modo reforzado no mejoró el resultado; se conservó el primer intento."
+                    } else {
+                        "4/4 Se conservó el primer resultado disponible."
+                    }
             )
-
-            mainHandler.postDelayed({
-                startListeningInternal(preferEnhancedAudio = false)
-            }, 250)
             return
         }
 
-        if (errorCode != SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
+        val eligibleForEnhancedRetry =
+            errorCode == SpeechRecognizer.ERROR_NO_MATCH ||
+                errorCode ==
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+
+        if (
+            eligibleForEnhancedRetry &&
+            !automaticEnhancedRetryAttempted &&
+            canUseEnhancedAudio()
+        ) {
+            automaticEnhancedRetryAttempted = true
+            automaticRetryInProgress = true
+
+            rememberPrimaryAttempt(
+                rawText = _voiceState.value.recognizedText,
+                interpretedText =
+                    _voiceState.value.interpretedText
+            )
+
+            _voiceState.value =
+                _voiceState.value.copy(
+                    isListening = false,
+                    stage = DiagnosticStage.STAGE_1,
+                    stageDescription =
+                        "No hubo un resultado fiable. Calibrando un segundo intento para ruido alto...",
+                    retryCount = 1,
+                    errorMessage = null
+                )
+
+            mainHandler.postDelayed({
+                startListeningInternal(
+                    preferEnhancedAudio = true,
+                    preserveOriginalText = true
+                )
+            }, 250)
+
+            return
+        }
+
+        if (
+            errorCode !=
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY
+        ) {
             incrementMetric(KEY_ATTEMPTS)
             incrementMetric(KEY_INVALID_RESULTS)
         }
 
-        val (message, canRetry) = when (errorCode) {
-            SpeechRecognizer.ERROR_NO_MATCH -> "No se reconoció ninguna frase de voz." to true
-            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Tiempo de espera agotado sin detección de voz." to true
-            SpeechRecognizer.ERROR_AUDIO -> "Error de captura de audio del micrófono." to false
-            SpeechRecognizer.ERROR_CLIENT -> "El servicio de reconocimiento no respondió." to false
-            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permiso RECORD_AUDIO no concedido." to false
-            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Error de red en el servicio de voz." to false
-            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "El reconocedor de voz estaba ocupado. Reiniciando..." to true
-            SpeechRecognizer.ERROR_SERVER -> "Error en el servidor de reconocimiento." to false
-            else -> "Error en el reconocimiento de voz (código $errorCode)." to false
-        }
+        val (message, canRetryStandard) =
+            when (errorCode) {
+                SpeechRecognizer.ERROR_NO_MATCH ->
+                    "No se reconoció ninguna frase de voz." to true
 
-        val currentRetries = _voiceState.value.retryCount
-        if (canRetry && currentRetries < 1) {
-            _voiceState.value = _voiceState.value.copy(
-                isListening = false,
-                stageDescription = "Reintentando automáticamente...",
-                retryCount = currentRetries + 1,
-                errorMessage = message
-            )
+                SpeechRecognizer.ERROR_SPEECH_TIMEOUT ->
+                    "Tiempo de espera agotado sin detección de voz." to true
+
+                SpeechRecognizer.ERROR_AUDIO ->
+                    "Error de captura de audio del micrófono." to false
+
+                SpeechRecognizer.ERROR_CLIENT ->
+                    "El servicio de reconocimiento no respondió." to false
+
+                SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS ->
+                    "Permiso RECORD_AUDIO no concedido." to false
+
+                SpeechRecognizer.ERROR_NETWORK,
+                SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                    "Error de red en el servicio de voz." to false
+
+                SpeechRecognizer.ERROR_RECOGNIZER_BUSY ->
+                    "El reconocedor de voz estaba ocupado. Reiniciando..." to true
+
+                SpeechRecognizer.ERROR_SERVER ->
+                    "Error en el servidor de reconocimiento." to false
+
+                else ->
+                    "Error en el reconocimiento de voz (código $errorCode)." to false
+            }
+
+        val currentRetries =
+            _voiceState.value.retryCount
+
+        if (
+            canRetryStandard &&
+            currentRetries < 1
+        ) {
+            _voiceState.value =
+                _voiceState.value.copy(
+                    isListening = false,
+                    stageDescription =
+                        "Reintentando reconocimiento...",
+                    retryCount =
+                        currentRetries + 1,
+                    errorMessage = message
+                )
+
             mainHandler.postDelayed({
-                startListeningInternal(preferEnhancedAudio = false)
+                startListeningInternal(
+                    preferEnhancedAudio = false
+                )
             }, 300)
         } else {
-            val errorName = speechErrorName(errorCode)
-            _voiceState.value = _voiceState.value.copy(
-                isListening = false,
-                stageDescription = "Reconocimiento detenido ($errorName). Pulsa el micrófono para intentar nuevamente.",
-                errorMessage = "$message [$errorName]"
-            )
+            clearPrimaryAttempt()
+
+            val errorName =
+                speechErrorName(errorCode)
+
+            _voiceState.value =
+                _voiceState.value.copy(
+                    isListening = false,
+                    stageDescription =
+                        "Reconocimiento detenido ($errorName). Pulsa el micrófono para intentar nuevamente.",
+                    errorMessage =
+                        "$message [$errorName]"
+                )
         }
     }
 
