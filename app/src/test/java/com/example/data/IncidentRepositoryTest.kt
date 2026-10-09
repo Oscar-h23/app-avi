@@ -91,9 +91,27 @@ class IncidentRepositoryTest {
     @Test
     fun `shared submit gate ignores a double tap while saving`() =
         runTest {
+            val testDispatcher =
+                StandardTestDispatcher(
+                    testScheduler
+                )
+
             Dispatchers.setMain(
-                StandardTestDispatcher(testScheduler)
+                testDispatcher
             )
+
+            val gatedRepository =
+                IncidentRepository(
+                    context = context,
+                    dao = dao,
+                    sessionManager = session,
+                    apiFactory = { _, _ -> api },
+                    enqueueSync = {
+                        enqueueCount.incrementAndGet()
+                    },
+                    ioDispatcher = testDispatcher,
+                    startBackground = false
+                )
 
             try {
                 val draft =
@@ -102,7 +120,7 @@ class IncidentRepositoryTest {
                     )
 
                 draft.newDraft(
-                    repository.currentOwner()
+                    gatedRepository.currentOwner()
                 )
 
                 val command =
@@ -117,10 +135,10 @@ class IncidentRepositoryTest {
                 var callbacks = 0
 
                 draft.submit(
-                    repository = repository,
+                    repository = gatedRepository,
                     command = command,
                     expectedOwner =
-                        repository.currentOwner()
+                        gatedRepository.currentOwner()
                 ) {
                     callbacks++
                 }
