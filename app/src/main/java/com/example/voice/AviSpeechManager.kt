@@ -177,7 +177,9 @@ class AviSpeechManager private constructor(private val appContext: Context) {
     ): Boolean {
         if (
             automaticEnhancedRetryAttempted ||
-            !canUseEnhancedAudio()
+            !canUseEnhancedAudio() ||
+            usingOnDeviceRecognizer ||
+            !hasValidatedInternet()
         ) {
             return false
         }
@@ -710,6 +712,33 @@ class AviSpeechManager private constructor(private val appContext: Context) {
             return
         }
 
+        if (
+            wasAutomaticRetry &&
+            primaryInterpretedText.isBlank() &&
+            (
+                errorCode == SpeechRecognizer.ERROR_NO_MATCH ||
+                    errorCode == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                )
+        ) {
+            automaticRetryInProgress = false
+
+            _voiceState.value = _voiceState.value.copy(
+                isListening = false,
+                stageDescription =
+                    "La captura reforzada no produjo texto. Volviendo al reconocimiento normal...",
+                retryCount = 1,
+                errorMessage = null
+            )
+
+            mainHandler.postDelayed({
+                startListeningInternal(
+                    preferEnhancedAudio = false
+                )
+            }, 250)
+
+            return
+        }
+
         val eligibleForEnhancedRetry =
             errorCode == SpeechRecognizer.ERROR_NO_MATCH ||
                 errorCode ==
@@ -718,7 +747,9 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         if (
             eligibleForEnhancedRetry &&
             !automaticEnhancedRetryAttempted &&
-            canUseEnhancedAudio()
+            canUseEnhancedAudio() &&
+            !usingOnDeviceRecognizer &&
+            hasValidatedInternet()
         ) {
             automaticEnhancedRetryAttempted = true
             automaticRetryInProgress = true
