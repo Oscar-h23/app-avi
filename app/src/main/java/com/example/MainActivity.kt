@@ -725,21 +725,37 @@ fun AviMainDashboardScaffold(repository: IncidentRepository) {
                 AviNavigationTab.DICTADO -> {
                     PantallaEscucha(
                         speechManager = speechManager,
-                        onTextoFinalizado = { textoReconocido ->
-                            val parsed = if (
-                                currentParsedCommand.textoOriginal.isNotBlank() &&
+                        onTextoFinalizado = { textoInterpretado ->
+                            val dictadoOriginal = speechManager
+                                .voiceState
+                                .value
+                                .recognizedText
+                                .ifBlank { textoInterpretado }
+
+                            val originalPrevio =
+                                currentParsedCommand.textoOriginal
+
+                            val parsedBase = if (
+                                originalPrevio.isNotBlank() &&
                                 !currentParsedCommand.valido
                             ) {
                                 AviParser.mergeCorrection(
                                     previous = currentParsedCommand,
-                                    rawCorrection = textoReconocido,
+                                    rawCorrection = textoInterpretado,
                                     allowedVias = allowedVias
                                 )
                             } else {
-                                AviParser.parse(textoReconocido, allowedVias)
+                                AviParser.parse(
+                                    textoInterpretado,
+                                    allowedVias
+                                )
                             }
 
-                            currentParsedCommand = parsed
+                            currentParsedCommand = parsedBase.copy(
+                                textoOriginal = originalPrevio.ifBlank {
+                                    dictadoOriginal
+                                }
+                            )
                             currentTab = AviNavigationTab.REVISION
                         },
                         onCancelar = {
@@ -1040,13 +1056,16 @@ fun PantallaEscucha(
         }
     }
 
-    LaunchedEffect(voiceState.stage, voiceState.recognizedText) {
+    LaunchedEffect(
+        voiceState.stage,
+        voiceState.interpretedText
+    ) {
         if (
             voiceState.stage == DiagnosticStage.STAGE_4 &&
-            voiceState.recognizedText.isNotBlank()
+            voiceState.interpretedText.isNotBlank()
         ) {
             kotlinx.coroutines.delay(350)
-            onTextoFinalizado(voiceState.recognizedText)
+            onTextoFinalizado(voiceState.interpretedText)
         }
     }
 
@@ -1193,7 +1212,7 @@ fun PantallaEscucha(
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Text(
-                        text = "Texto reconocido",
+                        text = "Dictado original (Android)",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
