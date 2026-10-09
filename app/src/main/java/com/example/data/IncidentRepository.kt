@@ -850,18 +850,21 @@ class IncidentRepository internal constructor(
     private suspend fun sync():
         Pair<SyncOutcome, Int> =
         withContext(Dispatchers.IO) {
-            syncMutex.withLock<Pair<SyncOutcome, Int>> {
+            syncMutex.withLock {
                 val token =
                     sessionManager.getToken()
-                        ?: return@withLock (
-                            SyncOutcome.AUTH_REQUIRED to 0
-                        )
 
                 val owner =
                     currentOwner()
-                        ?: return@withLock (
-                            SyncOutcome.AUTH_REQUIRED to 0
-                        )
+
+                if (
+                    token == null ||
+                    owner == null
+                ) {
+                    return@withLock (
+                        SyncOutcome.AUTH_REQUIRED to 0
+                    )
+                }
 
                 val client =
                     apiFactory(
@@ -883,72 +886,81 @@ class IncidentRepository internal constructor(
                         _lastSyncSummary.value =
                             "No hay registros pendientes."
 
-                        return@withLock (
-                            SyncOutcome.COMPLETE to 0
-                        )
-                    }
+                        SyncOutcome.COMPLETE to 0
+                    } else {
+                        _lastSyncSummary.value =
+                            "Enviando ${rows.size} registro(s) guardado(s)..."
 
-                    _lastSyncSummary.value =
-                        "Enviando ${rows.size} registro(s) guardado(s)..."
+                        var confirmed = 0
+                        var retry = false
+                        var authRequired = false
 
-                    var confirmed = 0
-                    var retry = false
-
-                    for (row in rows) {
-                        if (
-                            currentOwner() != owner ||
-                            sessionManager.getToken() != token
-                        ) {
-                            return@withLock (
-                                SyncOutcome.AUTH_REQUIRED to confirmed
-                            )
-                        }
-
-                        val sent =
-                            send(
-                                row,
-                                token,
-                                client
-                            )
-
-                        when (
-                            sent.estadoSincronizacion
-                        ) {
-                            EstadoSincronizacion
-                                .SINCRONIZADO
-                                .name -> {
-                                confirmed++
+                        for (row in rows) {
+                            if (
+                                currentOwner() != owner ||
+                                sessionManager.getToken() != token
+                            ) {
+                                authRequired = true
+                                break
                             }
 
-                            EstadoSincronizacion
-                                .PENDIENTE
-                                .name -> {
-                                retry = true
+                            val sent =
+                                send(
+                                    row,
+                                    token,
+                                    client
+                                )
+
+                            when (
+                                sent.estadoSincronizacion
+                            ) {
+                                EstadoSincronizacion
+                                    .SINCRONIZADO
+                                    .name -> {
+                                    confirmed++
+                                }
+
+                                EstadoSincronizacion
+                                    .PENDIENTE
+                                    .name -> {
+                                    retry = true
+                                }
+                            }
+
+                            if (
+                                sessionManager.getToken() == null
+                            ) {
+                                authRequired = true
+                                break
                             }
                         }
 
-                        if (
-                            sessionManager.getToken() == null
-                        ) {
-                            return@withLock (
-                                SyncOutcome.AUTH_REQUIRED to confirmed
-                            )
-                        }
-                    }
+                        val outcome =
+                            when {
+                                authRequired ->
+                                    SyncOutcome.AUTH_REQUIRED
 
-                    _lastSyncSummary.value =
-                        "$confirmed confirmados en SIGO. Los rechazados requieren revisión."
+                                retry ->
+                                    SyncOutcome.RETRY
 
-                    val outcome =
-                        if (retry) {
-                            SyncOutcome.RETRY
-                        } else {
-                            SyncOutcome.COMPLETE
-                        }
+                                else ->
+                                    SyncOutcome.COMPLETE
+                            }
 
-                    return@withLock (
+                        _lastSyncSummary.value =
+                            when (outcome) {
+                                SyncOutcome.AUTH_REQUIRED ->
+                                    "Inicie sesión para reanudar los envíos."
+
+                                SyncOutcome.RETRY ->
+                                    "$confirmed confirmados en SIGO. Quedan registros pendientes."
+
+                                SyncOutcome.COMPLETE ->
+                                    "$confirmed confirmados en SIGO. Los rechazados requieren revisión."
+                            }
+
                         outcome to confirmed
-                    )
+                    }
                 } finally {
                     _isSyncing.value = false
                 }
