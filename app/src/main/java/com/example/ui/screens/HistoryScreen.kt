@@ -193,6 +193,9 @@ fun PantallaHistorial(
     var toDate by rememberSaveable {
         mutableStateOf("")
     }
+    var currentPage by rememberSaveable {
+        mutableIntStateOf(1)
+    }
     var editingIncident by remember {
         mutableStateOf<Incident?>(null)
     }
@@ -215,6 +218,40 @@ fun PantallaHistorial(
 
     val incidentesFiltrados =
         filterResult.items
+
+    LaunchedEffect(
+        filtroSeleccionado,
+        plateQuery,
+        fromDate,
+        toDate
+    ) {
+        currentPage = 1
+    }
+
+    val pageResult = remember(
+        incidentesFiltrados,
+        currentPage
+    ) {
+        HistoryFilters.paginate(
+            incidents = incidentesFiltrados,
+            page = currentPage
+        )
+    }
+
+    LaunchedEffect(
+        pageResult.currentPage
+    ) {
+        if (
+            currentPage !=
+            pageResult.currentPage
+        ) {
+            currentPage =
+                pageResult.currentPage
+        }
+    }
+
+    val incidentesPagina =
+        pageResult.items
 
     Column(
         modifier = Modifier
@@ -475,22 +512,138 @@ fun PantallaHistorial(
                 }
             }
         } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement =
-                    Arrangement.spacedBy(10.dp)
+            Column(
+                modifier = Modifier.weight(1f)
             ) {
-                items(
-                    incidentesFiltrados,
-                    key = { it.id }
-                ) { item ->
-                    IncidenteCard(
-                        item = item,
-                        onEdit = {
-                            editingIncident =
-                                item
+                LazyColumn(
+                    modifier =
+                        Modifier.weight(1f),
+                    verticalArrangement =
+                        Arrangement.spacedBy(10.dp)
+                ) {
+                    items(
+                        incidentesPagina,
+                        key = { it.id }
+                    ) { item ->
+                        IncidenteCard(
+                            item = item,
+                            onEdit = {
+                                editingIncident =
+                                    item
+                            }
+                        )
+                    }
+                }
+
+                Spacer(
+                    modifier =
+                        Modifier.height(10.dp)
+                )
+
+                Surface(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    shape =
+                        RoundedCornerShape(12.dp),
+                    color =
+                        MaterialTheme
+                            .colorScheme
+                            .surfaceVariant
+                            .copy(alpha = 0.35f)
+                ) {
+                    Column(
+                        modifier =
+                            Modifier.padding(
+                                horizontal = 10.dp,
+                                vertical = 8.dp
+                            )
+                    ) {
+                        Text(
+                            text =
+                                "Mostrando ${pageResult.fromItem}-${pageResult.toItem} de ${pageResult.totalItems} registros",
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            textAlign =
+                                TextAlign.Center,
+                            fontSize = 11.sp,
+                            color =
+                                MaterialTheme
+                                    .colorScheme
+                                    .onSurfaceVariant
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(6.dp)
+                        )
+
+                        Row(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            horizontalArrangement =
+                                Arrangement.spacedBy(
+                                    8.dp
+                                ),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    currentPage =
+                                        (
+                                            currentPage -
+                                                1
+                                            ).coerceAtLeast(
+                                            1
+                                        )
+                                },
+                                enabled =
+                                    pageResult.currentPage >
+                                    1,
+                                modifier =
+                                    Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    "Anterior",
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            Text(
+                                text =
+                                    "Página ${pageResult.currentPage} de ${pageResult.totalPages}",
+                                modifier =
+                                    Modifier.weight(1f),
+                                textAlign =
+                                    TextAlign.Center,
+                                fontSize = 12.sp,
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+
+                            OutlinedButton(
+                                onClick = {
+                                    currentPage =
+                                        (
+                                            currentPage +
+                                                1
+                                            ).coerceAtMost(
+                                            pageResult.totalPages
+                                        )
+                                },
+                                enabled =
+                                    pageResult.currentPage <
+                                    pageResult.totalPages,
+                                modifier =
+                                    Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    "Siguiente",
+                                    fontSize = 12.sp
+                                )
+                            }
                         }
-                    )
+                    }
                 }
             }
         }
