@@ -852,15 +852,14 @@ class IncidentRepository internal constructor(
         withContext(Dispatchers.IO) {
             syncMutex.withLock {
                 val token =
-                    sessionManager
-                        .getToken()
+                    sessionManager.getToken()
                         ?: return@withLock
-                        SyncOutcome.AUTH_REQUIRED to 0
+                            SyncOutcome.AUTH_REQUIRED to 0
 
                 val owner =
                     currentOwner()
                         ?: return@withLock
-                        SyncOutcome.AUTH_REQUIRED to 0
+                            SyncOutcome.AUTH_REQUIRED to 0
 
                 val client =
                     apiFactory(
@@ -870,9 +869,6 @@ class IncidentRepository internal constructor(
 
                 _isSyncing.value = true
 
-                var confirmed = 0
-                var retry = false
-
                 try {
                     val rows =
                         dao.getPendientes(
@@ -881,9 +877,7 @@ class IncidentRepository internal constructor(
                             owner.server
                         )
 
-                    if (
-                        rows.isEmpty()
-                    ) {
+                    if (rows.isEmpty()) {
                         _lastSyncSummary.value =
                             "No hay registros pendientes."
 
@@ -894,17 +888,16 @@ class IncidentRepository internal constructor(
                     _lastSyncSummary.value =
                         "Enviando ${rows.size} registro(s) guardado(s)..."
 
+                    var confirmed = 0
+                    var retry = false
+
                     for (row in rows) {
                         if (
-                            currentOwner() !=
-                            owner ||
-                            sessionManager
-                                .getToken() !=
-                            token
+                            currentOwner() != owner ||
+                            sessionManager.getToken() != token
                         ) {
                             return@withLock
-                                SyncOutcome.AUTH_REQUIRED to
-                                confirmed
+                                SyncOutcome.AUTH_REQUIRED to confirmed
                         }
 
                         val sent =
@@ -914,45 +907,42 @@ class IncidentRepository internal constructor(
                                 client
                             )
 
-                        if (
-                            sent.estadoSincronizacion ==
+                        when (
+                            sent.estadoSincronizacion
+                        ) {
                             EstadoSincronizacion
                                 .SINCRONIZADO
-                                .name
-                        ) {
-                            confirmed++
-                        }
+                                .name -> {
+                                confirmed++
+                            }
 
-                        if (
-                            sent.estadoSincronizacion ==
                             EstadoSincronizacion
                                 .PENDIENTE
-                                .name
-                        ) {
-                            retry = true
+                                .name -> {
+                                retry = true
+                            }
                         }
 
                         if (
-                            sessionManager
-                                .getToken() ==
-                            null
+                            sessionManager.getToken() == null
                         ) {
                             return@withLock
-                                SyncOutcome.AUTH_REQUIRED to
-                                confirmed
+                                SyncOutcome.AUTH_REQUIRED to confirmed
                         }
                     }
 
                     _lastSyncSummary.value =
                         "$confirmed confirmados en SIGO. Los rechazados requieren revisión."
 
-                    (
+                    val outcome =
                         if (retry) {
                             SyncOutcome.RETRY
                         } else {
                             SyncOutcome.COMPLETE
                         }
-                        ) to confirmed
+
+                    return@withLock
+                        outcome to confirmed
                 } finally {
                     _isSyncing.value = false
                 }
