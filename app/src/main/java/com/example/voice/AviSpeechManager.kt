@@ -242,16 +242,21 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 val confidenceScores = results
                     ?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
 
+                val rawText = matches.firstOrNull()?.trim().orEmpty()
+
                 val fusion = AviParser.fuseHypotheses(
                     candidates = matches,
                     confidenceScores = confidenceScores,
                     allowedVias = allowedVias
                 )
-                val text = fusion.text
+                val interpretedText = fusion.text
 
-                if (text.isNotBlank()) {
-                    val analysis = AviParser.analyzeCommand(text, allowedVias)
-                    recordRecognition(matches, text)
+                if (interpretedText.isNotBlank()) {
+                    val analysis = AviParser.analyzeCommand(
+                        interpretedText,
+                        allowedVias
+                    )
+                    recordRecognition(matches, interpretedText)
 
                     _voiceState.value = _voiceState.value.copy(
                         isListening = false,
@@ -264,7 +269,13 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                             else ->
                                 analysis.prompt
                         },
-                        recognizedText = text,
+                        // Mantener exactamente la primera transcripción del
+                        // SpeechRecognizer para auditoría y diagnóstico.
+                        recognizedText = rawText.ifBlank {
+                            interpretedText
+                        },
+                        // Este sí puede contener normalización y fusión AVIX.
+                        interpretedText = interpretedText,
                         retryCount = 0,
                         errorMessage = if (analysis.parsed.valido) {
                             null
@@ -272,7 +283,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                             analysis.prompt
                         }
                     )
-                    notifyListeners(text)
+                    notifyListeners(interpretedText)
                 } else {
                     handleSpeechError(SpeechRecognizer.ERROR_NO_MATCH)
                 }
@@ -284,6 +295,9 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     ?.filter { it.isNotBlank() }
                     .orEmpty()
 
+                val rawPartialText =
+                    matches.firstOrNull()?.trim().orEmpty()
+
                 val partialText = AviParser.selectBestHypothesis(
                     candidates = matches,
                     allowedVias = allowedVias
@@ -291,7 +305,10 @@ class AviSpeechManager private constructor(private val appContext: Context) {
 
                 if (partialText.isNotBlank()) {
                     _voiceState.value = _voiceState.value.copy(
-                        recognizedText = partialText,
+                        recognizedText = rawPartialText.ifBlank {
+                            partialText
+                        },
+                        interpretedText = partialText,
                         stage = DiagnosticStage.STAGE_3,
                         stageDescription = "3/4 Interpretando comando..."
                     )
@@ -414,7 +431,8 @@ class AviSpeechManager private constructor(private val appContext: Context) {
         _voiceState.value = _voiceState.value.copy(
             retryCount = 0,
             errorMessage = null,
-            recognizedText = ""
+            recognizedText = "",
+            interpretedText = ""
         )
         startListeningInternal(preferEnhancedAudio = false)
     }
@@ -543,6 +561,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     stage = DiagnosticStage.STAGE_1,
                     stageDescription = "1/4 $audioModeText Diga: acción, vía y placa.",
                     recognizedText = "",
+                    interpretedText = "",
                     rmsLevel = 0f,
                     errorMessage = null
                 )
@@ -617,7 +636,8 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                 stage = DiagnosticStage.STAGE_4,
                 rmsLevel = 0f,
                 stageDescription = "4/4 Texto reconocido con éxito",
-                recognizedText = phrase
+                recognizedText = phrase,
+                interpretedText = phrase
             )
             notifyListeners(phrase)
         }
