@@ -4,6 +4,7 @@ import com.example.model.LoginRequest
 import com.example.model.LoginResponse
 import com.example.model.RegistroSigoRequest
 import com.example.model.RegistroSigoResponse
+import com.example.model.RegistroSigoUpdateRequest
 import com.example.model.SigoStatusResponse
 import com.example.model.ViaDto
 import com.squareup.moshi.Moshi
@@ -18,6 +19,8 @@ import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Headers
 import retrofit2.http.POST
+import retrofit2.http.PUT
+import retrofit2.http.Path
 import retrofit2.http.Query
 import java.util.concurrent.TimeUnit
 
@@ -57,6 +60,17 @@ interface SigoApiService {
     @POST("api/avi/registros")
     suspend fun registrarEvento(
         @Body request: RegistroSigoRequest
+    ): Response<RegistroSigoResponse>
+
+    /**
+     * Edición de un registro ya sincronizado.
+     * PUT /api/avi/registros/{id}
+     */
+    @Headers("Content-Type: application/json")
+    @PUT("api/avi/registros/{id}")
+    suspend fun actualizarEvento(
+        @Path("id") id: String,
+        @Body request: RegistroSigoUpdateRequest
     ): Response<RegistroSigoResponse>
 
     /**
