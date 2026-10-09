@@ -111,7 +111,7 @@ class AviDatabaseMigrationTest {
             AviDatabase.MIGRATION_1_2
                 .migrate(sqlite)
 
-            sqlite.rawQuery(
+            sqlite.query(
                 """
                 SELECT
                     id,
@@ -121,8 +121,7 @@ class AviDatabaseMigrationTest {
                     serverOrigin
                 FROM incidencias
                 WHERE id = 'legacy-1'
-                """.trimIndent(),
-                null
+                """.trimIndent()
             ).use { cursor ->
                 assertTrue(
                     cursor.moveToFirst()
