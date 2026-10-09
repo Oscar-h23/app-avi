@@ -316,7 +316,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                         "1/4 Calibrando ruido ambiente..."
 
                     AdaptiveVoiceActivityDetector.Phase.WAITING_FOR_SPEECH ->
-                        "2/4 Ruido calibrado. Habla ahora cerca del micrófono."
+                        "2/4 Ruido calibrado. Habla ahora y repite el comando completo."
 
                     AdaptiveVoiceActivityDetector.Phase.SPEECH ->
                         "3/4 Voz detectada y aislada del ruido."
@@ -469,7 +469,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                             isListening = false,
                             stage = DiagnosticStage.STAGE_2,
                             stageDescription =
-                                "Resultado dudoso. AVIX hará un segundo intento con reducción de ruido.",
+                                "Resultado dudoso. AVIX activará reducción de ruido; repite el comando completo.",
                             recognizedText = rawText.ifBlank {
                                 interpretedText
                             },
@@ -675,7 +675,7 @@ class AviSpeechManager private constructor(private val appContext: Context) {
                     isListening = false,
                     stage = DiagnosticStage.STAGE_1,
                     stageDescription =
-                        "No hubo un resultado fiable. Calibrando un segundo intento para ruido alto...",
+                        "No hubo un resultado fiable. AVIX calibrará el ruido; repite el comando completo.",
                     retryCount = 1,
                     errorMessage = null
                 )
