@@ -2760,6 +2760,8 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
     val usuario = repository.getUsuarioActual()
     val connectionState by repository.connectionState.collectAsStateWithLifecycle()
     val allowedVias by repository.allowedVias.collectAsStateWithLifecycle()
+    val unassignedCount by repository.unassignedCountFlow
+        .collectAsStateWithLifecycle(initialValue = 0)
     val voiceMetrics = remember {
         AviSpeechManager.getInstance(context).getVoiceMetrics()
     }
@@ -2802,8 +2804,43 @@ fun PantallaConfiguracion(repository: IncidentRepository) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(text = "Trabajador: ${usuario?.nombre ?: "Operador"}", fontSize = 13.sp)
                 Text(text = "Código de Operador: #${usuario?.codigo ?: "---"}", fontSize = 13.sp)
-                Text(text = "Plaza Asignada: ${usuario?.plaza ?: "P4"}", fontSize = 13.sp)
+                Text(
+                    text = "Plaza Asignada: ${usuario?.plaza ?: usuario?.plazaId?.toString() ?: "Sin plaza"}",
+                    fontSize = 13.sp
+                )
                 Text(text = "Rol: ${usuario?.rol ?: "OPERADOR"}", fontSize = 13.sp)
+            }
+        }
+
+        if (unassignedCount > 0) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color(0xFFFFF7E6)
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    1.dp,
+                    Color(0xFFF59E0B)
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp)
+                ) {
+                    Text(
+                        text = "Registros antiguos conservados",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        color = Color(0xFF92400E)
+                    )
+                    Text(
+                        text = "$unassignedCount registro(s) provienen de una versión que no guardaba operador/plaza. Se conservaron, pero AVIX no los atribuirá ni enviará automáticamente.",
+                        fontSize = 11.sp,
+                        color = Color(0xFF92400E)
+                    )
+                }
             }
         }
 
